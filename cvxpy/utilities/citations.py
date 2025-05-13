@@ -517,3 +517,15 @@ CITATION_DICT["MPAX"] = \
   year={2024}
 }
 """
+
+CITATION_DICT["KNITRO"] = \
+"""
+@article{byrd2006k,
+  title={K nitro: An integrated package for nonlinear optimization},
+  author={Byrd, Richard H and Nocedal, Jorge and Waltz, Richard A},
+  journal={Large-scale nonlinear optimization},
+  pages={35--59},
+  year={2006},
+  publisher={Springer}
+}
+"""
