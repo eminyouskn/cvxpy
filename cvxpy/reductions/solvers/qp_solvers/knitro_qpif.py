@@ -195,8 +195,8 @@ class KNITRO(QpSolver):
 
         try:
             kc = kn.KN_new()
-        except Exception:
-            raise ValueError("Valid Knitro license not found. Please check your installation.")
+        except Exception: # Error in the Knitro.
+            return {s.STATUS: s.SOLVER_ERROR}
 
         if not verbose:
             # Disable Knitro output.
@@ -225,7 +225,9 @@ class KNITRO(QpSolver):
         if solver_opts:
             if 'x_init' in solver_opts:
                 var_idxs, vals = solver_opts['x_init']
-                kn.KN_set_var_primal_init_values(kc, indexVars=var_idxs, xPrimalInit=vals)
+                kn.KN_set_var_primal_init_values(
+                    kc, indexVars=var_idxs, xPrimalInit=vals
+                )
 
         # Get the number of equality and inequality constraints.
         n_eq, n_ineq = A.shape[0], F.shape[0]
@@ -257,9 +259,9 @@ class KNITRO(QpSolver):
 
         # Set the objective function.
 
-        var_idxs = [i for i in range(n_vars)]
         # Set the linear part of the objective function.
         if q is not None:
+            var_idxs = [i for i in range(n_vars)]
             kn.KN_add_obj_linear_struct(
                 kc, indexVars=var_idxs, coefs=q
             )
