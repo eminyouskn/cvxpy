@@ -42,8 +42,12 @@ class KNITRO(QpSolver):
     MIP_CAPABLE = True
     BOUNDED_VARIABLES = True
 
+    # Keys:
+    CONTEXT_KEY = "context"
+    X_INIT_KEY = "x_init"
+
     # Keyword arguments for the CVXPY interface.
-    INTERFACE_ARGS = []
+    INTERFACE_ARGS = [X_INIT_KEY]
 
     # Map of Knitro status to CVXPY status.
     STATUS_MAP = {
@@ -109,8 +113,6 @@ class KNITRO(QpSolver):
         -600: s.SOLVER_ERROR,
     }  # MEM_LIMIT
 
-    # Object Key:
-    KEY = "context"
 
     def name(self):
         return s.KNITRO
@@ -135,7 +137,7 @@ class KNITRO(QpSolver):
     def invert(self, results, inverse_data):
         import knitro as kn
 
-        kc = results[KNITRO.KEY]
+        kc = results[KNITRO.CONTEXT_KEY]
         status_kn, obj_kn, x_kn, y_kn = kn.KN_get_solution(kc)
         num_iters = kn.KN_get_number_iters(kc)
         solve_time = kn.KN_get_solve_time_real(kc)
@@ -223,10 +225,10 @@ class KNITRO(QpSolver):
         kn.KN_set_var_types(kc, xTypes=var_types)
 
         if solver_opts:
-            if 'x_init' in solver_opts:
-                var_idxs, vals = solver_opts['x_init']
+            if KNITRO.X_INIT_KEY in solver_opts:
+                var_idxs, vals = solver_opts[KNITRO.X_INIT_KEY]
                 kn.KN_set_var_primal_init_values(
-                    kc, indexVars=var_idxs, xPrimalInit=vals
+                    kc, indexVars=var_idxs, xInitVals=vals
                 )
 
         # Get the number of equality and inequality constraints.
@@ -284,7 +286,7 @@ class KNITRO(QpSolver):
         except Exception:  # Error in the solution
             results[s.STATUS] = s.SOLVER_ERROR
 
-        results[KNITRO.KEY] = kc
+        results[KNITRO.CONTEXT_KEY] = kc
 
         # Cache the Knitro context.
         if solver_cache is not None:
