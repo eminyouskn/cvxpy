@@ -49,6 +49,7 @@ from cvxpy.reductions.solvers.qp_solvers.cplex_qpif import CPLEX as CPLEX_qp
 from cvxpy.reductions.solvers.qp_solvers.daqp_qpif import DAQP as DAQP_qp
 from cvxpy.reductions.solvers.qp_solvers.gurobi_qpif import GUROBI as GUROBI_qp
 from cvxpy.reductions.solvers.qp_solvers.highs_qpif import HIGHS as HIGHS_qp
+from cvxpy.reductions.solvers.qp_solvers.knitro_qpif import KNITRO as KNITRO_qp
 from cvxpy.reductions.solvers.qp_solvers.mpax_qpif import MPAX as MPAX_qp
 from cvxpy.reductions.solvers.qp_solvers.osqp_qpif import OSQP as OSQP_qp
 from cvxpy.reductions.solvers.qp_solvers.piqp_qpif import PIQP as PIQP_qp
@@ -72,6 +73,7 @@ solver_qp_intf = [OSQP_qp(),
                   DAQP_qp(),
                   HIGHS_qp(),
                   MPAX_qp(),
+                  KNITRO_qp(),
                   ]
 
 SOLVER_MAP_CONIC = {solver.name(): solver for solver in solver_conic_intf}
@@ -94,7 +96,8 @@ QP_SOLVERS = [s.OSQP,
               s.PIQP,
               s.PROXQP,
               s.DAQP,
-              s.MPAX]
+              s.MPAX,
+              s.KNITRO]
 DISREGARD_CLARABEL_SDP_SUPPORT_FOR_DEFAULT_RESOLUTION = True
 MI_SOLVERS = [s.GLPK_MI, s.MOSEK, s.GUROBI, s.CPLEX,
               s.XPRESS, s.CBC, s.SCIP, s.HIGHS, s.COPT, s.ECOS_BB]
