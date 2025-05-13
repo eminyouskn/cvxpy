@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import numpy as np
+from scipy import sparse
 
 import cvxpy.settings as s
 from cvxpy.reductions.solution import Solution, failure_solution
@@ -22,15 +23,17 @@ from cvxpy.reductions.solvers.qp_solvers.qp_solver import QpSolver
 from cvxpy.utilities.citations import CITATION_DICT
 
 
-def kn_coo(*mats) -> tuple[list[int], list[int], list[float]]:
-    co_idxs = []
+def kn_coo(*mats: sparse.coo_matrix) -> tuple[list[int], list[int], list[float]]:
+    con_idxs = []
     var_idxs = []
     coefs = []
+    shape = 0
     for mat in mats:
-        co_idxs.extend(mat.row)
+        con_idxs.extend(mat.row + shape)
         var_idxs.extend(mat.col)
         coefs.extend(mat.data)
-    return co_idxs, var_idxs, coefs
+        shape += mat.shape[0]
+    return con_idxs, var_idxs, coefs
 
 
 class KNITRO(QpSolver):
@@ -190,10 +193,6 @@ class KNITRO(QpSolver):
         lb = data[s.LOWER_BOUNDS]
         ub = data[s.UPPER_BOUNDS]
 
-        if solver_opts:
-            # Solver options are not yet supported in this interface.
-            raise ValueError("Solver options are not supported in the Knitro interface.")
-
         try:
             kc = kn.KN_new()
         except Exception:
@@ -205,11 +204,6 @@ class KNITRO(QpSolver):
 
         # Add n variables to the problem.
         kn.KN_add_vars(kc, n_vars)
-
-        # Set initial values for the variables.
-        if warm_start:
-            # Warm start is not supported in this interface.
-            raise ValueError("Warm start is not supported in the Knitro interface.")
 
         # Set the lower and upper bounds on the variables.
         if lb is not None:
@@ -228,6 +222,12 @@ class KNITRO(QpSolver):
             var_types[ind] = kn.KN_VARTYPE_INTEGER
         kn.KN_set_var_types(kc, xTypes=var_types)
 
+        if solver_opts:
+            if 'x_init' in solver_opts:
+                var_idxs, vals = solver_opts['x_init']
+                kn.KN_set_var_primal_init_values(kc, indexVars=var_idxs, xPrimalInit=vals)
+
+        # Get the number of equality and inequality constraints.
         n_eq, n_ineq = A.shape[0], F.shape[0]
 
         # Add the constraints to the problem.
@@ -236,31 +236,41 @@ class KNITRO(QpSolver):
 
         # Add the equality bounds.
         if n_eq > 0:
-            co_idxs = [i for i in range(n_eq)]
-            kn.KN_set_con_eqbnds(kc, indexCons=co_idxs, cEqBnds=b)
+            con_idxs = [i for i in range(n_eq)]
+            kn.KN_set_con_eqbnds(
+                kc, indexCons=con_idxs, cEqBnds=b
+            )
 
         # Add the inequality bounds.
         if n_ineq > 0:
-            co_idxs = [i for i in range(n_eq, n_eq + n_ineq)]
-            kn.KN_set_con_upbnds(kc, indexCons=co_idxs, cUpBnds=g)
+            con_idxs = [i for i in range(n_eq, n_eq + n_ineq)]
+            kn.KN_set_con_upbnds(
+                kc, indexCons=con_idxs, cUpBnds=g
+            )
 
         # Set the constraint coefficients.
         if n_eq + n_ineq > 0:
-            co_idxs, var_idxs, coefs = kn_coo(A, F)
-            kn.KN_add_con_linear_struct(kc, co_idxs, var_idxs, coefs)
+            con_idxs, var_idxs, coefs = kn_coo(A, F)
+            kn.KN_add_con_linear_struct(
+                kc, indexCons=con_idxs, indexVars=var_idxs, coefs=coefs
+            )
 
         # Set the objective function.
 
         var_idxs = [i for i in range(n_vars)]
         # Set the linear part of the objective function.
         if q is not None:
-            kn.KN_add_obj_linear_struct(kc, var_idxs, q)
+            kn.KN_add_obj_linear_struct(
+                kc, indexVars=var_idxs, coefs=q
+            )
 
         # Set the quadratic part of the objective function.
-        if P is not None:
-            P = P.tocoo()
-            var1_idxs, var2_idxs, coefs = kn_coo(P)
-            kn.KN_add_obj_quadratic_struct(kc, var1_idxs, var2_idxs, coefs)
+        if P is not None and P.nnz != 0:
+            var1_idxs, var2_idxs, coefs = kn_coo(P.tocoo())
+            coefs = 0.5 * np.array(coefs)
+            kn.KN_add_obj_quadratic_struct(
+                kc, indexVars1=var1_idxs, indexVars2=var2_idxs, coefs=coefs
+            )
 
         # Set the sense of the objective function.
         kn.KN_set_obj_goal(kc, kn.KN_OBJGOAL_MINIMIZE)
