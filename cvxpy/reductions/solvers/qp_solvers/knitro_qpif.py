@@ -29,7 +29,7 @@ def kn_coo(*mats: sparse.coo_matrix) -> tuple[list[int], list[int], list[float]]
     coefs = []
     shape = 0
     for mat in mats:
-        con_idxs.extend(mat.row + shape)
+        con_idxs.extend(shape + mat.row)
         var_idxs.extend(mat.col)
         coefs.extend(mat.data)
         shape += mat.shape[0]
