@@ -180,8 +180,7 @@ class KNITRO(QpSolver):
 
         Returns
         -------
-        tuple
-            (status, optimal value, primal, equality dual, inequality dual)
+        The result of the call to the knitro solver.
         """
         import knitro as kn
 
