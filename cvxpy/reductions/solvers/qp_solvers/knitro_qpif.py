@@ -35,6 +35,26 @@ def kn_coo(*mats: sparse.coo_matrix) -> tuple[list[int], list[int], list[float]]
         shape += mat.shape[0]
     return con_idxs, var_idxs, coefs
 
+def kn_isinf(x) -> bool:
+    """Check if x is -inf or inf."""
+    if x <= -np.inf or x >= np.inf:
+        return True
+    if x <= float("-inf") or x >= float("inf"):
+        return True
+    import knitro as kn
+    if x <= -kn.KN_INFINITY or x >= kn.KN_INFINITY:
+        return True
+    return False
+
+def kn_rm_inf(arr) -> tuple[list[int], list[float]]:
+    """Convert -inf to -kn.KN_INFINITY and inf to kn.KN_INFINITY."""
+    idx, a = [], []
+    for i, v in enumerate(arr):
+        if not kn_isinf(v):
+            idx.append(i)
+            a.append(v)
+    return idx, a
+
 
 class KNITRO(QpSolver):
     """QP interface for the Knitro solver"""
@@ -147,6 +167,12 @@ class KNITRO(QpSolver):
             s.EXTRA_STATS: kc,
         }
         status = self.STATUS_MAP.get(status_kn, s.SOLVER_ERROR)
+
+        if status == s.UNBOUNDED:
+            return Solution(
+                status, -np.inf, {}, {}, attr
+            )
+
         if (status not in s.SOLUTION_PRESENT) or (x_kn is None):
             return failure_solution(status, attr)
 
@@ -211,19 +237,23 @@ class KNITRO(QpSolver):
 
         # Set the lower and upper bounds on the variables.
         if lb is not None:
-            kn.KN_set_var_lobnds(kc, xLoBnds=lb)
+            var_idxs, lb = kn_rm_inf(lb)
+            kn.KN_set_var_lobnds(kc, indexVars=var_idxs, xLoBnds=lb)
         if ub is not None:
-            kn.KN_set_var_upbnds(kc, xUpBnds=ub)
+            var_idxs, ub = kn_rm_inf(ub)
+            kn.KN_set_var_upbnds(kc, indexVars=var_idxs, xUpBnds=ub)
 
         # Set the variable types.
         # - default: KN_VARTYPE_CONTINUOUS.
         # - binray: KN_VARTYPE_BINARY.
         # - integer: KN_VARTYPE_INTEGER.
         var_types = [kn.KN_VARTYPE_CONTINUOUS] * n_vars
-        for ind in data[s.BOOL_IDX]:
-            var_types[ind] = kn.KN_VARTYPE_BINARY
-        for ind in data[s.INT_IDX]:
-            var_types[ind] = kn.KN_VARTYPE_INTEGER
+        if s.BOOL_IDX in data:
+            for ind in data[s.BOOL_IDX]:
+                var_types[ind] = kn.KN_VARTYPE_BINARY
+        if s.INT_IDX in data:
+            for ind in data[s.INT_IDX]:
+                var_types[ind] = kn.KN_VARTYPE_INTEGER
         kn.KN_set_var_types(kc, xTypes=var_types)
 
         if solver_opts:
