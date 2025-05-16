@@ -159,6 +159,9 @@ class KNITRO(QpSolver):
             y = np.array(y_kn)
             dual_vars = {KNITRO.DUAL_VAR_ID: y}
 
+        # Free the Knitro context.
+        kn.KN_free(kc)
+
         return Solution(status, obj, primal_vars, dual_vars, attr)
 
     def solve_via_data(self, data, warm_start: bool, verbose: bool, solver_opts, solver_cache=None):
