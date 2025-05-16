@@ -89,6 +89,7 @@ SCIPY = ["scipy"]
 SCS = []
 XPRESS = ["xpress"]
 DAQP = ["daqp"]
+KNITRO = []
 testing = ["pytest", "hypothesis"]
 doc = ["sphinx",
        "sphinxcontrib.jquery",
