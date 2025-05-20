@@ -42,6 +42,7 @@ def kn_isinf(x) -> bool:
         return True
     if x <= float("-inf") or x >= float("inf"):
         return True
+
     import knitro as kn
 
     if x <= -kn.KN_INFINITY or x >= kn.KN_INFINITY:
@@ -232,7 +233,13 @@ class KNITRO(QpSolver):
             # Disable Knitro output.
             kn.KN_set_int_param(kc, kn.KN_PARAM_OUTLEV, kn.KN_OUTLEV_NONE)
 
-        n_vars = (q.shape[0] if q is not None else 0) + (P.shape[0] if P is not None else 0)
+        n_vars = 0
+        if P is not None:
+            n_vars = P.shape[0]
+        elif q is not None:
+            n_vars = q.shape[0]
+        else:
+            raise ValueError("No variables in the problem.")
 
         # Add n variables to the problem.
         kn.KN_add_vars(kc, n_vars)
@@ -251,11 +258,11 @@ class KNITRO(QpSolver):
         # - integer: KN_VARTYPE_INTEGER.
         var_types = [kn.KN_VARTYPE_CONTINUOUS] * n_vars
         if s.BOOL_IDX in data:
-            for ind in data[s.BOOL_IDX]:
-                var_types[ind] = kn.KN_VARTYPE_BINARY
+            for j in data[s.BOOL_IDX]:
+                var_types[j] = kn.KN_VARTYPE_BINARY
         if s.INT_IDX in data:
-            for ind in data[s.INT_IDX]:
-                var_types[ind] = kn.KN_VARTYPE_INTEGER
+            for j in data[s.INT_IDX]:
+                var_types[j] = kn.KN_VARTYPE_INTEGER
         kn.KN_set_var_types(kc, xTypes=var_types)
 
         # Set the initial values of the primal variables.
