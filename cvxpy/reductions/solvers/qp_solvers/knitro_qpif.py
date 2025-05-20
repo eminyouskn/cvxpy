@@ -88,7 +88,7 @@ class KNITRO(QpSolver):
         -204: s.INFEASIBLE,
         -205: s.INFEASIBLE,
         -300: s.UNBOUNDED,
-        -301: s.INFEASIBLE_OR_UNBOUNDED,
+        -301: s.UNBOUNDED,
         -400: s.USER_LIMIT,
         -401: s.USER_LIMIT,
         -402: s.USER_LIMIT,
