@@ -23,19 +23,6 @@ from cvxpy.reductions.solvers.qp_solvers.qp_solver import QpSolver
 from cvxpy.utilities.citations import CITATION_DICT
 
 
-def kn_coo(*mats: sparse.coo_matrix) -> tuple[list[int], list[int], list[float]]:
-    con_idxs = []
-    var_idxs = []
-    coefs = []
-    shape = 0
-    for mat in mats:
-        con_idxs.extend(shape + mat.row)
-        var_idxs.extend(mat.col)
-        coefs.extend(mat.data)
-        shape += mat.shape[0]
-    return con_idxs, var_idxs, coefs
-
-
 def kn_isinf(x) -> bool:
     """Check if x is -inf or inf."""
     if x <= -np.inf or x >= np.inf:
@@ -276,17 +263,18 @@ class KNITRO(QpSolver):
 
         # Add the constraints to the problem.
         if n_cons > 0:
-            kn.KN_add_cons(kc, n_eqs + n_ineqs)
+            kn.KN_add_cons(kc, n_cons)
 
         # Add linear equality and inequality constraints.
         if n_eqs > 0:
-            con_idxs = [i for i in range(n_eqs)]
+            con_idxs = range(n_eqs)
             kn.KN_set_con_eqbnds(kc, indexCons=con_idxs, cEqBnds=b)
         if n_ineqs > 0:
-            con_idxs = [i for i in range(n_eqs, n_eqs + n_ineqs)]
+            con_idxs = range(n_eqs, n_eqs + n_ineqs)
             kn.KN_set_con_upbnds(kc, indexCons=con_idxs, cUpBnds=g)
         if n_eqs + n_ineqs > 0:
-            con_idxs, var_idxs, coefs = kn_coo(A, F)
+            D = sparse.vstack([A, F]).tocoo()
+            con_idxs, var_idxs, coefs = D.row, D.col, D.data
             kn.KN_add_con_linear_struct(kc, indexCons=con_idxs, indexVars=var_idxs, coefs=coefs)
 
         # Set the initial values of the dual variables.
@@ -302,8 +290,8 @@ class KNITRO(QpSolver):
 
         # Set the quadratic part of the objective function.
         if P is not None and P.nnz != 0:
-            var1_idxs, var2_idxs, coefs = kn_coo(P.tocoo())
-            coefs = 0.5 * np.array(coefs)
+            Q = sparse.coo_matrix(0.5 * P)
+            var1_idxs, var2_idxs, coefs = Q.row, Q.col, Q.data
             kn.KN_add_obj_quadratic_struct(
                 kc, indexVars1=var1_idxs, indexVars2=var2_idxs, coefs=coefs
             )
