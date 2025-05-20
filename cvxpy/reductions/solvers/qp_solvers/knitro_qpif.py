@@ -65,9 +65,10 @@ class KNITRO(QpSolver):
     # Keys:
     CONTEXT_KEY = "context"
     X_INIT_KEY = "x_init"
+    Y_INIT_KEY = "y_init"
 
     # Keyword arguments for the CVXPY interface.
-    INTERFACE_ARGS = [X_INIT_KEY]
+    INTERFACE_ARGS = [X_INIT_KEY, Y_INIT_KEY]
 
     # Map of Knitro status to CVXPY status.
     STATUS_MAP = {
@@ -256,12 +257,22 @@ class KNITRO(QpSolver):
                 var_types[ind] = kn.KN_VARTYPE_INTEGER
         kn.KN_set_var_types(kc, xTypes=var_types)
 
-        if solver_opts:
-            if KNITRO.X_INIT_KEY in solver_opts:
-                var_idxs, vals = solver_opts[KNITRO.X_INIT_KEY]
-                kn.KN_set_var_primal_init_values(
-                    kc, indexVars=var_idxs, xInitVals=vals
-                )
+        for key, val in solver_opts.items():
+            if key in KNITRO.INTERFACE_ARGS:
+                continue
+            param_type = kn.KN_get_param_type(key)
+            if param_type == kn.KN_PARAMTYPE_INTEGER:
+                kn.KN_set_int_param(kc, key, val)
+            elif param_type == kn.KN_PARAMTYPE_FLOAT:
+                kn.KN_set_double_param(kc, key, val)
+            elif param_type == kn.KN_PARAMTYPE_STRING:
+                kn.KN_set_char_param(kc, key, val)
+
+        if KNITRO.X_INIT_KEY in solver_opts:
+            var_idxs, vals = solver_opts[KNITRO.X_INIT_KEY]
+            kn.KN_set_var_primal_init_values(
+                kc, indexVars=var_idxs, xInitVals=vals
+            )
 
         # Get the number of equality and inequality constraints.
         n_eqs, n_ineqs = A.shape[0], F.shape[0]
@@ -285,6 +296,13 @@ class KNITRO(QpSolver):
             con_idxs, var_idxs, coefs = kn_coo(A, F)
             kn.KN_add_con_linear_struct(
                 kc, indexCons=con_idxs, indexVars=var_idxs, coefs=coefs
+            )
+
+        # Set the initial values of the dual variables.
+        if KNITRO.Y_INIT_KEY in solver_opts:
+            con_idxs, vals = solver_opts[KNITRO.Y_INIT_KEY]
+            kn.KN_set_con_dual_init_values(
+                kc, indexCons=con_idxs, yInitVals=vals
             )
 
         # Set the objective function.
