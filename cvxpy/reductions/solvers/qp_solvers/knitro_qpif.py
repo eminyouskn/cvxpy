@@ -264,35 +264,30 @@ class KNITRO(QpSolver):
                 )
 
         # Get the number of equality and inequality constraints.
-        n_eq, n_ineq = A.shape[0], F.shape[0]
+        n_eqs, n_ineqs = A.shape[0], F.shape[0]
+        n_cons = n_eqs + n_ineqs
 
         # Add the constraints to the problem.
-        if n_eq + n_ineq > 0:
-            kn.KN_add_cons(kc, n_eq + n_ineq)
+        if n_cons > 0:
+            kn.KN_add_cons(kc, n_eqs + n_ineqs)
 
-        # Add the equality bounds.
-        if n_eq > 0:
-            con_idxs = [i for i in range(n_eq)]
+        if n_eqs > 0:
+            con_idxs = [i for i in range(n_eqs)]
             kn.KN_set_con_eqbnds(
                 kc, indexCons=con_idxs, cEqBnds=b
             )
-
-        # Add the inequality bounds.
-        if n_ineq > 0:
-            con_idxs = [i for i in range(n_eq, n_eq + n_ineq)]
+        if n_ineqs > 0:
+            con_idxs = [i for i in range(n_eqs, n_eqs + n_ineqs)]
             kn.KN_set_con_upbnds(
                 kc, indexCons=con_idxs, cUpBnds=g
             )
-
-        # Set the constraint coefficients.
-        if n_eq + n_ineq > 0:
+        if n_eqs + n_ineqs > 0:
             con_idxs, var_idxs, coefs = kn_coo(A, F)
             kn.KN_add_con_linear_struct(
                 kc, indexCons=con_idxs, indexVars=var_idxs, coefs=coefs
             )
 
         # Set the objective function.
-
         # Set the linear part of the objective function.
         if q is not None:
             var_idxs = [i for i in range(n_vars)]
