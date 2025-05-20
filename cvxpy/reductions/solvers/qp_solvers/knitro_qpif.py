@@ -35,6 +35,7 @@ def kn_coo(*mats: sparse.coo_matrix) -> tuple[list[int], list[int], list[float]]
         shape += mat.shape[0]
     return con_idxs, var_idxs, coefs
 
+
 def kn_isinf(x) -> bool:
     """Check if x is -inf or inf."""
     if x <= -np.inf or x >= np.inf:
@@ -42,9 +43,11 @@ def kn_isinf(x) -> bool:
     if x <= float("-inf") or x >= float("inf"):
         return True
     import knitro as kn
+
     if x <= -kn.KN_INFINITY or x >= kn.KN_INFINITY:
         return True
     return False
+
 
 def kn_rm_inf(arr) -> tuple[list[int], list[float]]:
     """Convert -inf to -kn.KN_INFINITY and inf to kn.KN_INFINITY."""
@@ -134,7 +137,6 @@ class KNITRO(QpSolver):
         -600: s.SOLVER_ERROR,
     }  # MEM_LIMIT
 
-
     def name(self):
         return s.KNITRO
 
@@ -170,9 +172,7 @@ class KNITRO(QpSolver):
         status = self.STATUS_MAP.get(status_kn, s.SOLVER_ERROR)
 
         if status == s.UNBOUNDED:
-            return Solution(
-                status, -np.inf, {}, {}, attr
-            )
+            return Solution(status, -np.inf, {}, {}, attr)
 
         if (status not in s.SOLUTION_PRESENT) or (x_kn is None):
             return failure_solution(status, attr)
@@ -220,18 +220,19 @@ class KNITRO(QpSolver):
         b = data[s.B]
         F = data[s.F].tocoo()
         g = data[s.G]
-        n_vars = int(data["n_var"])
         lb = data[s.LOWER_BOUNDS]
         ub = data[s.UPPER_BOUNDS]
 
         try:
             kc = kn.KN_new()
-        except Exception: # Error in the Knitro.
+        except Exception:  # Error in the Knitro.
             return {s.STATUS: s.SOLVER_ERROR}
 
         if not verbose:
             # Disable Knitro output.
             kn.KN_set_int_param(kc, kn.KN_PARAM_OUTLEV, kn.KN_OUTLEV_NONE)
+
+        n_vars = (q.shape[0] if q is not None else 0) + (P.shape[0] if P is not None else 0)
 
         # Add n variables to the problem.
         kn.KN_add_vars(kc, n_vars)
@@ -257,22 +258,10 @@ class KNITRO(QpSolver):
                 var_types[ind] = kn.KN_VARTYPE_INTEGER
         kn.KN_set_var_types(kc, xTypes=var_types)
 
-        for key, val in solver_opts.items():
-            if key in KNITRO.INTERFACE_ARGS:
-                continue
-            param_type = kn.KN_get_param_type(key)
-            if param_type == kn.KN_PARAMTYPE_INTEGER:
-                kn.KN_set_int_param(kc, key, val)
-            elif param_type == kn.KN_PARAMTYPE_FLOAT:
-                kn.KN_set_double_param(kc, key, val)
-            elif param_type == kn.KN_PARAMTYPE_STRING:
-                kn.KN_set_char_param(kc, key, val)
-
+        # Set the initial values of the primal variables.
         if KNITRO.X_INIT_KEY in solver_opts:
             var_idxs, vals = solver_opts[KNITRO.X_INIT_KEY]
-            kn.KN_set_var_primal_init_values(
-                kc, indexVars=var_idxs, xInitVals=vals
-            )
+            kn.KN_set_var_primal_init_values(kc, indexVars=var_idxs, xInitVals=vals)
 
         # Get the number of equality and inequality constraints.
         n_eqs, n_ineqs = A.shape[0], F.shape[0]
@@ -282,36 +271,27 @@ class KNITRO(QpSolver):
         if n_cons > 0:
             kn.KN_add_cons(kc, n_eqs + n_ineqs)
 
+        # Add linear equality and inequality constraints.
         if n_eqs > 0:
             con_idxs = [i for i in range(n_eqs)]
-            kn.KN_set_con_eqbnds(
-                kc, indexCons=con_idxs, cEqBnds=b
-            )
+            kn.KN_set_con_eqbnds(kc, indexCons=con_idxs, cEqBnds=b)
         if n_ineqs > 0:
             con_idxs = [i for i in range(n_eqs, n_eqs + n_ineqs)]
-            kn.KN_set_con_upbnds(
-                kc, indexCons=con_idxs, cUpBnds=g
-            )
+            kn.KN_set_con_upbnds(kc, indexCons=con_idxs, cUpBnds=g)
         if n_eqs + n_ineqs > 0:
             con_idxs, var_idxs, coefs = kn_coo(A, F)
-            kn.KN_add_con_linear_struct(
-                kc, indexCons=con_idxs, indexVars=var_idxs, coefs=coefs
-            )
+            kn.KN_add_con_linear_struct(kc, indexCons=con_idxs, indexVars=var_idxs, coefs=coefs)
 
         # Set the initial values of the dual variables.
         if KNITRO.Y_INIT_KEY in solver_opts:
             con_idxs, vals = solver_opts[KNITRO.Y_INIT_KEY]
-            kn.KN_set_con_dual_init_values(
-                kc, indexCons=con_idxs, yInitVals=vals
-            )
+            kn.KN_set_con_dual_init_values(kc, indexCons=con_idxs, yInitVals=vals)
 
         # Set the objective function.
         # Set the linear part of the objective function.
         if q is not None:
             var_idxs = [i for i in range(n_vars)]
-            kn.KN_add_obj_linear_struct(
-                kc, indexVars=var_idxs, coefs=q
-            )
+            kn.KN_add_obj_linear_struct(kc, indexVars=var_idxs, coefs=q)
 
         # Set the quadratic part of the objective function.
         if P is not None and P.nnz != 0:
@@ -323,6 +303,18 @@ class KNITRO(QpSolver):
 
         # Set the sense of the objective function.
         kn.KN_set_obj_goal(kc, kn.KN_OBJGOAL_MINIMIZE)
+
+        # Set the values of the parameters.
+        for key, val in solver_opts.items():
+            if key in KNITRO.INTERFACE_ARGS:
+                continue
+            param_type = kn.KN_get_param_type(key)
+            if param_type == kn.KN_PARAMTYPE_INTEGER:
+                kn.KN_set_int_param(kc, key, val)
+            elif param_type == kn.KN_PARAMTYPE_FLOAT:
+                kn.KN_set_double_param(kc, key, val)
+            elif param_type == kn.KN_PARAMTYPE_STRING:
+                kn.KN_set_char_param(kc, key, val)
 
         # Optimize the problem.
         results = {}
