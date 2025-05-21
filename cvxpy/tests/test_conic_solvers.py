@@ -2507,3 +2507,86 @@ class TestCOPT(unittest.TestCase):
 
         # Valid arg.
         problem.solve(solver=cp.COPT, feastol=1e-9)
+
+
+@unittest.skipUnless('KNITRO' in INSTALLED_SOLVERS, 'KNITRO is not installed.')
+class TestKnitro(BaseTest):
+
+    def setUp(self) -> None:
+        self.a = cp.Variable(name='a')
+        self.b = cp.Variable(name='b')
+        self.c = cp.Variable(name='c')
+
+        self.x = cp.Variable(2, name='x')
+        self.y = cp.Variable(3, name='y')
+        self.z = cp.Variable(2, name='z')
+
+        self.A = cp.Variable((2, 2), name='A')
+        self.B = cp.Variable((2, 2), name='B')
+        self.C = cp.Variable((3, 2), name='C')
+
+    def test_knitro_lp_0(self) -> None:
+        StandardTestLPs.test_lp_0(solver='KNITRO')
+
+    def test_knitro_lp_1(self) -> None:
+        StandardTestLPs.test_lp_1(solver='KNITRO')
+
+    def test_knitro_lp_2(self) -> None:
+        StandardTestLPs.test_lp_2(solver='KNITRO')
+
+    def test_knitro_lp_3(self) -> None:
+        StandardTestLPs.test_lp_3(solver='KNITRO')
+
+    def test_knitro_lp_4(self) -> None:
+        StandardTestLPs.test_lp_4(solver='KNITRO')
+
+    def test_knitro_lp_5(self) -> None:
+        StandardTestLPs.test_lp_5(solver='KNITRO')
+
+    def test_knitro_lp_6(self) -> None:
+        StandardTestLPs.test_lp_6(solver='KNITRO')
+
+    def test_knitro_lp_bound_attr(self) -> None:
+        StandardTestLPs.test_lp_bound_attr(solver='KNITRO')
+
+    def test_knitro_socp_0(self) -> None:
+        StandardTestSOCPs.test_socp_0(solver='KNITRO')
+
+    def test_knitro_socp_1(self) -> None:
+        StandardTestSOCPs.test_socp_1(solver='KNITRO')
+
+    def test_knitro_socp_2(self) -> None:
+        StandardTestSOCPs.test_socp_2(solver='KNITRO')
+
+    def test_knitro_socp_3(self) -> None:
+        # axis 0
+        StandardTestSOCPs.test_socp_3ax0(solver='KNITRO', duals=False)
+        # axis 1
+        StandardTestSOCPs.test_socp_3ax1(solver='KNITRO', duals=False)
+
+    def test_knitro_socp_bounds_attr(self) -> None:
+        StandardTestSOCPs.test_socp_bounds_attr(solver='KNITRO')
+
+    def test_knitro_mi_lp_0(self) -> None:
+        StandardTestLPs.test_mi_lp_0(solver='KNITRO')
+
+    def test_knitro_mi_lp_1(self) -> None:
+        StandardTestLPs.test_mi_lp_1(solver='KNITRO')
+
+    def test_knitro_mi_lp_2(self) -> None:
+        StandardTestLPs.test_mi_lp_2(solver='KNITRO')
+
+    def test_knitro_mi_lp_3(self) -> None:
+        StandardTestLPs.test_mi_lp_3(solver='KNITRO')
+
+    def test_knitro_mi_lp_5(self) -> None:
+        StandardTestLPs.test_mi_lp_5(solver='KNITRO')
+
+    def test_knitro_mi_socp_1(self) -> None:
+        StandardTestSOCPs.test_mi_socp_1(solver='KNITRO')
+
+    def test_knitro_mi_socp_2(self) -> None:
+        StandardTestSOCPs.test_mi_socp_2(solver='KNITRO')
+
+    def test_knitro_qp_0(self) -> None:
+        StandardTestQPs.test_qp_0(solver='KNITRO')
