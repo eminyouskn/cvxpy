@@ -303,7 +303,7 @@ class KNITRO(QpSolver):
         for key, val in solver_opts.items():
             if key in KNITRO.INTERFACE_ARGS:
                 continue
-            param_type = kn.KN_get_param_type(key)
+            param_type = kn.KN_get_param_type(kc, key)
             if param_type == kn.KN_PARAMTYPE_INTEGER:
                 kn.KN_set_int_param(kc, key, val)
             elif param_type == kn.KN_PARAMTYPE_FLOAT:
