@@ -280,7 +280,7 @@ class KNITRO(ConicSolver):
         n_ineqs = int(dims[s.LEQ_DIM])
         socs = list(dims.get(s.SOC_DIM, []))
         n_socs = len(socs)
-        n_cons = n_eqs + n_ineqs + n_socs + sum(socs)
+        n_cons = n_eqs + n_ineqs + sum(socs) + n_socs
 
         if n_cons > 0:
             kn.KN_add_cons(kc, n_cons)
@@ -300,29 +300,33 @@ class KNITRO(ConicSolver):
         # Set the SOC constraints.
         if n_socs > 0:
             m = n_eqs + n_ineqs
+            p = n_eqs + n_ineqs + sum(socs)
             for k in range(n_socs):
                 soc_var_idxs = kn.KN_add_vars(kc, socs[k])
                 kn.KN_set_var_lobnds(kc, indexVars=soc_var_idxs[0], xLoBnds=0.0)
+                coefs = [-1.0] + [1.0] * (socs[k] - 1)
                 kn.KN_add_con_quadratic_struct(
                     kc,
-                    indexCons=m + k + socs[k],
+                    indexCons=p + k,
                     indexVars1=soc_var_idxs,
                     indexVars2=soc_var_idxs,
-                    coefs=[1.0] + [-1.0] * (socs[k] - 1),
+                    coefs=coefs,
                 )
-                kn.KN_set_con_lobnds(kc, indexCons=m + k + socs[k], cLoBnds=0.0)
-
-                D = sp.coo_matrix(A[m : m + socs[k], :])
-                e = b[m : m + socs[k]]
-                con_idxs = [m + k + i for i in range(socs[k])]
-                kn.KN_set_con_eqbnds(kc, indexCons=con_idxs, cEqBnds=e)
+                kn.KN_set_con_upbnds(kc, indexCons=p + k, cUpBnds=0.0)
+                con_idxs = [i for i in range(m, m + socs[k])]
+                coefs = [1.0] * socs[k]
                 kn.KN_add_con_linear_struct(
                     kc,
                     indexCons=con_idxs,
                     indexVars=soc_var_idxs,
-                    coefs=[1.0] * socs[k],
+                    coefs=coefs,
                 )
-                con_idxs, var_idxs, coefs = m + k + D.row, D.col, D.data
+
+                D = sp.coo_matrix(A[m : m + socs[k], :])
+                e = b[m : m + socs[k]]
+                con_idxs = [i for i in range(m, m + socs[k])]
+                kn.KN_set_con_eqbnds(kc, indexCons=con_idxs, cEqBnds=e)
+                con_idxs, var_idxs, coefs = m + D.row, D.col, D.data
                 kn.KN_add_con_linear_struct(
                     kc,
                     indexCons=con_idxs,
