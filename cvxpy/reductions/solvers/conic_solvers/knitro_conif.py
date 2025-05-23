@@ -360,7 +360,7 @@ class KNITRO(ConicSolver):
         for key, val in solver_opts.items():
             if key in KNITRO.INTERFACE_ARGS:
                 continue
-            param_id = kn.KN_get_param_id(key)
+            param_id = kn.KN_get_param_id(kc, key)
             param_type = kn.KN_get_param_type(kc, param_id)
             setter = kn.KN_set_char_param
             if param_type == kn.KN_PARAMTYPE_INTEGER:
