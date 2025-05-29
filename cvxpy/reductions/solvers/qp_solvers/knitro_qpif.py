@@ -305,12 +305,12 @@ class KNITRO(QpSolver):
                 continue
             param_id = kn.KN_get_param_id(kc, key)
             param_type = kn.KN_get_param_type(kc, param_id)
-            setter = kn.KN_set_char_param
+            fn = kn.KN_set_char_param
             if param_type == kn.KN_PARAMTYPE_INTEGER:
-                setter = kn.KN_set_int_param
+                fn = kn.KN_set_int_param
             elif param_type == kn.KN_PARAMTYPE_FLOAT:
-                setter = kn.KN_set_double_param
-            setter(kc, param_id, val)
+                fn = kn.KN_set_double_param
+            fn(kc, param_id, val)
 
         # Optimize the problem.
         results = {}
