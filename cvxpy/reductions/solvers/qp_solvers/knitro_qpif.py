@@ -159,15 +159,18 @@ class KNITRO(QpSolver):
             s.EXTRA_STATS: kc,
         }
         if s.STATUS in results and results[s.STATUS] == s.SOLVER_ERROR:
+            kn.KN_free(kc)
             return failure_solution(s.SOLVER_ERROR, attr)
 
         status_kn, obj_kn, x_kn, y_kn = kn.KN_get_solution(kc)
         status = self.STATUS_MAP.get(status_kn, s.SOLVER_ERROR)
 
         if status == s.UNBOUNDED:
+            kn.KN_free(kc)
             return Solution(status, -np.inf, {}, {}, attr)
 
         if (status not in s.SOLUTION_PRESENT) or (x_kn is None):
+            kn.KN_free(kc)
             return failure_solution(status, attr)
 
         obj = obj_kn + inverse_data[s.OFFSET]
