@@ -2580,6 +2580,9 @@ class TestKNITRO(BaseTest):
     def test_knitro_expcone_1(self) -> None:
         StandardTestECPs.test_expcone_1(solver=cp.KNITRO)
 
+    def test_knitro_exp_soc_1(self) -> None:
+        StandardTestMixedCPs.test_exp_soc_1(solver=cp.KNITRO)
+
     def test_knitro_params(self) -> None:
         n = 10
         m = 4
