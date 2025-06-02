@@ -147,9 +147,10 @@ class KNITRO(QpSolver):
 
     def invert(self, results, inverse_data):
         import knitro as kn
+        if KNITRO.CONTEXT_KEY not in results:
+            return failure_solution(s.SOLVER_ERROR)
 
         kc = results[KNITRO.CONTEXT_KEY]
-        status_kn, obj_kn, x_kn, y_kn = kn.KN_get_solution(kc)
         num_iters = kn.KN_get_number_iters(kc)
         solve_time = kn.KN_get_solve_time_real(kc)
         attr = {
@@ -157,6 +158,10 @@ class KNITRO(QpSolver):
             s.NUM_ITERS: num_iters,
             s.EXTRA_STATS: kc,
         }
+        if s.STATUS in results and results[s.STATUS] == s.SOLVER_ERROR:
+            return failure_solution(s.SOLVER_ERROR, attr)
+
+        status_kn, obj_kn, x_kn, y_kn = kn.KN_get_solution(kc)
         status = self.STATUS_MAP.get(status_kn, s.SOLVER_ERROR)
 
         if status == s.UNBOUNDED:
@@ -211,10 +216,13 @@ class KNITRO(QpSolver):
         lb = data[s.LOWER_BOUNDS]
         ub = data[s.UPPER_BOUNDS]
 
+        results = {}
         try:
             kc = kn.KN_new()
         except Exception:  # Error in the Knitro.
             return {s.STATUS: s.SOLVER_ERROR}
+
+        results[KNITRO.CONTEXT_KEY] = kc
 
         if not verbose:
             # Disable Knitro output.
@@ -313,13 +321,10 @@ class KNITRO(QpSolver):
             fn(kc, param_id, val)
 
         # Optimize the problem.
-        results = {}
         try:
             kn.KN_solve(kc)
         except Exception:  # Error in the solution
             results[s.STATUS] = s.SOLVER_ERROR
-
-        results[KNITRO.CONTEXT_KEY] = kc
 
         # Cache the Knitro context.
         if solver_cache is not None:
