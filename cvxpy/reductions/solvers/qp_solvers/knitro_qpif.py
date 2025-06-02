@@ -159,33 +159,27 @@ class KNITRO(QpSolver):
             s.EXTRA_STATS: kc,
         }
         if s.STATUS in results and results[s.STATUS] == s.SOLVER_ERROR:
-            kn.KN_free(kc)
-            return failure_solution(s.SOLVER_ERROR, attr)
-
-        status_kn, obj_kn, x_kn, y_kn = kn.KN_get_solution(kc)
-        status = self.STATUS_MAP.get(status_kn, s.SOLVER_ERROR)
-
-        if status == s.UNBOUNDED:
-            kn.KN_free(kc)
-            return Solution(status, -np.inf, {}, {}, attr)
-
-        if (status not in s.SOLUTION_PRESENT) or (x_kn is None):
-            kn.KN_free(kc)
-            return failure_solution(status, attr)
-
-        obj = obj_kn + inverse_data[s.OFFSET]
-        x = np.array(x_kn)
-        primal_vars = {KNITRO.VAR_ID: x}
-
-        dual_vars = None
-        if y_kn is not None:
-            y = np.array(y_kn)
-            dual_vars = {KNITRO.DUAL_VAR_ID: y}
+            solution = failure_solution(s.SOLVER_ERROR, attr)
+        else:
+            status_kn, obj_kn, x_kn, y_kn = kn.KN_get_solution(kc)
+            status = self.STATUS_MAP.get(status_kn, s.SOLVER_ERROR)
+            if status == s.UNBOUNDED:
+                solution = Solution(status, -np.inf, {}, {}, attr)
+            elif (status not in s.SOLUTION_PRESENT) or (x_kn is None):
+                solution = failure_solution(status, attr)
+            else:
+                obj = obj_kn + inverse_data[s.OFFSET]
+                x = np.array(x_kn)
+                primal_vars = {KNITRO.VAR_ID: x}
+                dual_vars = None
+                if y_kn is not None:
+                    y = np.array(y_kn)
+                    dual_vars = {KNITRO.DUAL_VAR_ID: y}
+                solution = Solution(status, obj, primal_vars, dual_vars, attr)
 
         # Free the Knitro context.
         kn.KN_free(kc)
-
-        return Solution(status, obj, primal_vars, dual_vars, attr)
+        return solution
 
     def solve_via_data(self, data, warm_start: bool, verbose: bool, solver_opts, solver_cache=None):
         """
