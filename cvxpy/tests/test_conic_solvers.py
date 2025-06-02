@@ -2577,6 +2577,9 @@ class TestKNITRO(BaseTest):
     def test_knitro_qp_0(self) -> None:
         StandardTestQPs.test_qp_0(solver=cp.KNITRO)
 
+    def test_knitro_expcone_1(self) -> None:
+        StandardTestECPs.test_expcone_1(solver=cp.KNITRO)
+
     def test_knitro_params(self) -> None:
         n = 10
         m = 4
