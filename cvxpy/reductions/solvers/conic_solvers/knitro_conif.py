@@ -65,12 +65,95 @@ class Dims:
         self.n_cone_vars = self.n_soc_vars + self.n_exp_vars
 
 
+class CB:
+    def __init__(self, f, grad=None, hess=None):
+        self.f = f
+        self.grad = grad
+        self.hess = hess
+
+
 class ECCP:
     # Exponential cone callback parameters.
-    def __init__(self, n, variables, constrs):
+    def __init__(self, n, x, c):
         self.n = n
-        self.variables = variables
-        self.constrs = constrs
+        self.x = x
+        self.c = c
+
+
+def build_exp_cb() -> CB:
+    import knitro as kn
+
+    def f(
+        _,
+        cb: kn.CB_context,
+        req: kn.KN_eval_request,
+        res: kn.KN_eval_result,
+        params: ECCP,
+    ):
+        if req.type != kn.KN_RC_EVALFC:
+            return -1
+        v = req.x
+        for i in range(params.n):
+            p = params.x[i]
+            x, y, z = v[p : p + 3]
+            if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
+                if x <= 0.0:
+                    res.c[i] = -1.0
+                else:
+                    res.c[i] = 0.0
+            else:
+                res.c[i] = y * np.exp(x / y) - z
+        return 0
+
+    def grad(
+        _,
+        cb: kn.CB_context,
+        req: kn.KN_eval_request,
+        res: kn.KN_eval_result,
+        params: ECCP,
+    ):
+        if req.type != kn.KN_RC_EVALGA:
+            return -1
+        v = req.x
+        for i in range(params.n):
+            p = params.x[i]
+            x, y = v[p], v[p + 1]
+            if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
+                res.jac[3 * i] = kn.KN_INFINITY
+                res.jac[3 * i + 1] = kn.KN_INFINITY
+                res.jac[3 * i + 2] = kn.KN_INFINITY
+            else:
+                res.jac[3 * i] = np.exp(x / y)
+                res.jac[3 * i + 1] = (1 - (x / y)) * np.exp(x / y)
+                res.jac[3 * i + 2] = -1.0
+        return 0
+
+    def hess(
+        _,
+        cb: kn.CB_context,
+        req: kn.KN_eval_request,
+        res: kn.KN_eval_result,
+        params: ECCP,
+    ):
+        if req.type != kn.KN_RC_EVALH and req.type != kn.KN_RC_EVALH_NO_F:
+            return -1
+        v = req.x
+        u = req.lambda_
+        for i in range(params.n):
+            vp = params.x[i]
+            cp = params.c[i]
+            x, y = v[vp], v[vp + 1]
+            if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
+                res.hess[3 * i] = kn.KN_INFINITY
+                res.hess[3 * i + 1] = kn.KN_INFINITY
+                res.hess[3 * i + 2] = kn.KN_INFINITY
+            else:
+                res.hess[3 * i] = (1 / y) * np.exp(x / y) * u[cp]
+                res.hess[3 * i + 1] = -(x / y**2) * np.exp(x / y) * u[cp]
+                res.hess[3 * i + 2] = (x**2 / y**3) * np.exp(x / y) * u[cp]
+        return 0
+
+    return CB(f=f, grad=grad, hess=hess)
 
 
 class KNITRO(ConicSolver):
@@ -384,99 +467,30 @@ class KNITRO(ConicSolver):
             kn.KN_set_var_lobnds(kc, indexVars=var_idxs[1::3], xLoBnds=bnds)
             kn.KN_set_var_lobnds(kc, indexVars=var_idxs[2::3], xLoBnds=bnds)
 
-            exp_cb_params = ECCP(n=dims.n_exps, variables=var_idxs[0::3], constrs=con_idxs)
+            cb = build_exp_cb()
 
-            def exp_cb_eval(
-                kc,
-                cb,
-                req: kn.KN_eval_request,
-                res: kn.KN_eval_result,
-                params: ECCP,
-            ):
-                if req.type != kn.KN_RC_EVALFC:
-                    return -1
-                v = req.x
-                for i in range(params.n):
-                    p = params.variables[i]
-                    x, y, z = v[p : p + 3]
-                    if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
-                        if x <= 0.0:
-                            res.c[i] = -1.0
-                        else:
-                            res.c[i] = 0.0
-                    else:
-                        res.c[i] = y * np.exp(x / y) - z
-                return 0
-
-            def exp_cb_grad(
-                kc,
-                cb: kn.CB_context,
-                req: kn.KN_eval_request,
-                res: kn.KN_eval_result,
-                params: ECCP,
-            ):
-                if req.type != kn.KN_RC_EVALGA:
-                    return -1
-                v = req.x
-                for i in range(params.n):
-                    p = params.variables[i]
-                    x, y = v[p], v[p + 1]
-                    if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
-                        res.jac[3 * i] = kn.KN_INFINITY
-                        res.jac[3 * i + 1] = kn.KN_INFINITY
-                        res.jac[3 * i + 2] = kn.KN_INFINITY
-                    else:
-                        res.jac[3 * i] = np.exp(x / y)
-                        res.jac[3 * i + 1] = (1 - (x / y)) * np.exp(x / y)
-                        res.jac[3 * i + 2] = -1.0
-                return 0
-
-            def exp_cb_hess(
-                kc,
-                cb: kn.CB_context,
-                req: kn.KN_eval_request,
-                res: kn.KN_eval_result,
-                params: ECCP,
-            ):
-                if req.type != kn.KN_RC_EVALH and req.type != kn.KN_RC_EVALH_NO_F:
-                    return -1
-                v = req.x
-                u = req.lambda_
-                for i in range(params.n):
-                    vp = params.variables[i]
-                    cp = params.constrs[i]
-                    x, y = v[vp], v[vp + 1]
-                    if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
-                        res.hess[3 * i] = kn.KN_INFINITY
-                        res.hess[3 * i + 1] = kn.KN_INFINITY
-                        res.hess[3 * i + 2] = kn.KN_INFINITY
-                    else:
-                        res.hess[3 * i] = (1 / y) * np.exp(x / y) * u[cp]
-                        res.hess[3 * i + 1] = -(x / y**2) * np.exp(x / y) * u[cp]
-                        res.hess[3 * i + 2] = (x**2 / y**3) * np.exp(x / y) * u[cp]
-                return 0
-
-            exp_cb = kn.KN_add_eval_callback(kc, indexCons=con_idxs, funcCallback=exp_cb_eval)
+            kb = kn.KN_add_eval_callback(kc, indexCons=con_idxs, funcCallback=cb.f)
             jac_con_idxs = np.repeat(con_idxs, 3)
             jac_var_idxs = var_idxs
             kn.KN_set_cb_grad(
                 kc,
-                exp_cb,
+                kb,
                 jacIndexCons=jac_con_idxs,
                 jacIndexVars=jac_var_idxs,
-                gradCallback=exp_cb_grad,
+                gradCallback=cb.grad,
             )
-            hess_var_idxs = np.repeat(exp_cb_params.variables, 3)
+            hess_var_idxs = np.repeat(var_idxs[0::3], 3)
             hess_var1_idxs = hess_var_idxs + np.tile(np.array([0, 0, 1]), dims.n_exps)
             hess_var2_idxs = hess_var_idxs + np.tile(np.array([0, 1, 1]), dims.n_exps)
             kn.KN_set_cb_hess(
                 kc,
-                exp_cb,
+                kb,
                 hessIndexVars1=hess_var1_idxs,
                 hessIndexVars2=hess_var2_idxs,
-                hessCallback=exp_cb_hess,
+                hessCallback=cb.hess,
             )
-            kn.KN_set_cb_user_params(kc, exp_cb, exp_cb_params)
+            params = ECCP(n=dims.n_exps, x=var_idxs[0::3], c=con_idxs)
+            kn.KN_set_cb_user_params(kc, kb, params)
 
         # Set the initial values of the dual variables.
         if KNITRO.Y_INIT_KEY in solver_opts:
