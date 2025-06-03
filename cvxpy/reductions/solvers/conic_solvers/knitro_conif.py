@@ -443,10 +443,11 @@ class KNITRO(ConicSolver):
             coefs=coefs,
         )
 
-        offset = 0
+        var_offset = n_vars
+        con_offset = n_cons
         for k in range(dims.n_socs):
-            var_idxs = n_vars + offset + np.arange(dims.socs[k])
-            con_idx = n_cons + k
+            var_idxs = var_offset + np.arange(dims.socs[k])
+            con_idx = con_offset + k
             coefs = np.ones_like(var_idxs, dtype=float)
             coefs[0] *= -1.0
             kn.KN_set_var_lobnds(kc, indexVars=var_idxs[0], xLoBnds=0.0)
@@ -458,11 +459,12 @@ class KNITRO(ConicSolver):
                 coefs=coefs,
             )
             kn.KN_set_con_upbnds(kc, indexCons=con_idx, cUpBnds=0.0)
-            offset += dims.socs[k]
+            var_offset += dims.socs[k]
+        con_offset += dims.n_socs
 
         if dims.n_exps > 0:
-            con_idxs = n_cons + dims.n_socs + np.arange(dims.n_exps)
-            var_idxs = n_vars + dims.n_soc_vars + np.arange(dims.n_exp_vars)
+            con_idxs = con_offset + np.arange(dims.n_exps)
+            var_idxs = var_offset + np.arange(dims.n_exp_vars)
             bnds = np.zeros_like(con_idxs, dtype=float)
             kn.KN_set_con_upbnds(kc, indexCons=con_idxs, cUpBnds=bnds)
             kn.KN_set_var_lobnds(kc, indexVars=var_idxs[1::3], xLoBnds=bnds)
@@ -492,6 +494,8 @@ class KNITRO(ConicSolver):
             )
             params = ECCP(n=dims.n_exps, x=var_idxs[0::3], c=con_idxs)
             kn.KN_set_cb_user_params(kc, kb, params)
+        con_offset += dims.n_exps
+        var_offset += dims.n_exp_vars
 
         # Set the initial values of the dual variables.
         if KNITRO.Y_INIT_KEY in solver_opts:
