@@ -605,6 +605,8 @@ class KNITRO(ConicSolver):
             )
             params = P3dCCP(n=dims.n_pow3d, x=var_idxs[0::3], c=con_idxs, a=dims.pow3ds)
             kn.KN_set_cb_user_params(kc, kb, params)
+        con_offset += dims.n_pow3d
+        var_offset += dims.n_pow3d_vars
 
         if dims.n_psds > 0:
             pass
