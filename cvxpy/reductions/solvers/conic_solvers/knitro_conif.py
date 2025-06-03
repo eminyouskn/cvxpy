@@ -66,6 +66,7 @@ class Dims:
 
 
 class CB:
+    # Knitro callback
     def __init__(self, f, grad=None, hess=None):
         self.f = f
         self.grad = grad
