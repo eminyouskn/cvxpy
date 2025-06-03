@@ -94,16 +94,16 @@ def build_exp_cb() -> CB:
         if req.type != kn.KN_RC_EVALFC:
             return -1
         v = req.x
-        for i in range(params.n):
-            p = params.x[i]
-            x, y, z = v[p : p + 3]
+        for k in range(params.n):
+            j = params.x[k]
+            x, y, z = v[j : j + 3]
             if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
                 if x <= 0.0:
-                    res.c[i] = -1.0
+                    res.c[k] = -1.0
                 else:
-                    res.c[i] = 0.0
+                    res.c[k] = 0.0
             else:
-                res.c[i] = y * np.exp(x / y) - z
+                res.c[k] = y * np.exp(x / y) - z
         return 0
 
     def grad(
@@ -116,17 +116,17 @@ def build_exp_cb() -> CB:
         if req.type != kn.KN_RC_EVALGA:
             return -1
         v = req.x
-        for i in range(params.n):
-            p = params.x[i]
-            x, y = v[p], v[p + 1]
+        for k in range(params.n):
+            j = params.x[k]
+            x, y = v[j], v[j + 1]
             if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
-                res.jac[3 * i] = kn.KN_INFINITY
-                res.jac[3 * i + 1] = kn.KN_INFINITY
-                res.jac[3 * i + 2] = kn.KN_INFINITY
+                res.jac[3 * k] = kn.KN_INFINITY
+                res.jac[3 * k + 1] = kn.KN_INFINITY
+                res.jac[3 * k + 2] = kn.KN_INFINITY
             else:
-                res.jac[3 * i] = np.exp(x / y)
-                res.jac[3 * i + 1] = (1 - (x / y)) * np.exp(x / y)
-                res.jac[3 * i + 2] = -1.0
+                res.jac[3 * k] = np.exp(x / y)
+                res.jac[3 * k + 1] = (1 - (x / y)) * np.exp(x / y)
+                res.jac[3 * k + 2] = -1.0
         return 0
 
     def hess(
@@ -140,18 +140,18 @@ def build_exp_cb() -> CB:
             return -1
         v = req.x
         u = req.lambda_
-        for i in range(params.n):
-            vp = params.x[i]
-            cp = params.c[i]
-            x, y = v[vp], v[vp + 1]
+        for k in range(params.n):
+            j = params.x[k]
+            i = params.c[k]
+            x, y = v[j], v[j + 1]
             if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
-                res.hess[3 * i] = kn.KN_INFINITY
-                res.hess[3 * i + 1] = kn.KN_INFINITY
-                res.hess[3 * i + 2] = kn.KN_INFINITY
+                res.hess[3 * k] = kn.KN_INFINITY
+                res.hess[3 * k + 1] = kn.KN_INFINITY
+                res.hess[3 * k + 2] = kn.KN_INFINITY
             else:
-                res.hess[3 * i] = (1 / y) * np.exp(x / y) * u[cp]
-                res.hess[3 * i + 1] = -(x / y**2) * np.exp(x / y) * u[cp]
-                res.hess[3 * i + 2] = (x**2 / y**3) * np.exp(x / y) * u[cp]
+                res.hess[3 * k] = (1 / y) * np.exp(x / y) * u[i]
+                res.hess[3 * k + 1] = -(x / y**2) * np.exp(x / y) * u[i]
+                res.hess[3 * k + 2] = (x**2 / y**3) * np.exp(x / y) * u[i]
         return 0
 
     return CB(f=f, grad=grad, hess=hess)
