@@ -56,17 +56,16 @@ class Dims:
         self.n_ineqs = int(dims.get(s.LEQ_DIM, 0))
         self.socs = [int(d) for d in dims.get(s.SOC_DIM, [])]
         self.n_exps = int(dims.get(s.EXP_DIM, 0))
-        print(dims)
-        self.psds = dims.get(s.PSD_DIM, [])
         self.pow3ds = dims.get("p", [])
+        self.psds = dims.get(s.PSD_DIM, [])
         self.n_pow3d = len(self.pow3ds)
         self.n_socs = len(self.socs)
         self.n_psds = len(self.psds)
         self.n_cones = self.n_socs + self.n_exps + self.n_pow3d + self.n_psds
         self.n_soc_vars = sum(self.socs)
         self.n_exp_vars = 3 * self.n_exps
-        self.n_psd_vars = sum(d * (d + 1) // 2 for d in self.psds)
         self.n_pow3d_vars = 3 * self.n_pow3d
+        self.n_psd_vars = sum(d * (d + 1) // 2 for d in self.psds)
         self.n_cone_vars = self.n_soc_vars + self.n_exp_vars + self.n_pow3d_vars + self.n_psd_vars
 
 
