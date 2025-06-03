@@ -56,11 +56,11 @@ class Dims:
     def __init__(self, dims: dict):
         self.n_eqs = int(dims.get(s.EQ_DIM, 0))
         self.n_ineqs = int(dims.get(s.LEQ_DIM, 0))
-        self.soc_dims = [int(d) for d in dims.get(s.SOC_DIM, [])]
+        self.socs = [int(d) for d in dims.get(s.SOC_DIM, [])]
         self.n_exps = int(dims.get(s.EXP_DIM, 0))
-        self.n_socs = len(self.soc_dims)
+        self.n_socs = len(self.socs)
         self.n_cones = self.n_socs + self.n_exps
-        self.n_soc_vars = sum(self.soc_dims)
+        self.n_soc_vars = sum(self.socs)
         self.n_exp_vars = 3 * self.n_exps
         self.n_cone_vars = self.n_soc_vars + self.n_exp_vars
 
@@ -445,7 +445,7 @@ class KNITRO(ConicSolver):
 
         offset = 0
         for k in range(dims.n_socs):
-            var_idxs = n_vars + offset + np.arange(dims.soc_dims[k])
+            var_idxs = n_vars + offset + np.arange(dims.socs[k])
             con_idx = n_cons + k
             coefs = np.ones_like(var_idxs, dtype=float)
             coefs[0] *= -1.0
@@ -458,7 +458,7 @@ class KNITRO(ConicSolver):
                 coefs=coefs,
             )
             kn.KN_set_con_upbnds(kc, indexCons=con_idx, cUpBnds=0.0)
-            offset += dims.soc_dims[k]
+            offset += dims.socs[k]
 
         if dims.n_exps > 0:
             con_idxs = n_cons + dims.n_socs + np.arange(dims.n_exps)
