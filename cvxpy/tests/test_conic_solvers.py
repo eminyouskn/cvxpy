@@ -2583,6 +2583,18 @@ class TestKNITRO(BaseTest):
     def test_knitro_exp_soc_1(self) -> None:
         StandardTestMixedCPs.test_exp_soc_1(solver=cp.KNITRO)
 
+    def test_knitro_pcp_1(self) -> None:
+        StandardTestPCPs.test_pcp_1(solver=cp.KNITRO)
+
+    def test_knitro_pcp_2(self) -> None:
+        StandardTestPCPs.test_pcp_2(solver=cp.KNITRO)
+
+    def test_knitro_pcp_3(self) -> None:
+        StandardTestPCPs.test_pcp_3(solver=cp.KNITRO)
+
+    def test_knitro_mi_pcp_0(self) -> None:
+        StandardTestPCPs.test_mi_pcp_0(solver=cp.KNITRO)
+
     def test_knitro_params(self) -> None:
         n = 10
         m = 4

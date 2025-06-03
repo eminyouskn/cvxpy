@@ -14,13 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from dataclasses import dataclass
-
 import numpy as np
 import scipy.sparse as sp
 
 import cvxpy.settings as s
-from cvxpy.constraints import SOC, ExpCone
+from cvxpy.constraints import SOC, ExpCone, PowCone3D
 from cvxpy.reductions.dcp2cone.cone_matrix_stuffing import ParamConeProg
 from cvxpy.reductions.solution import Solution, failure_solution
 from cvxpy.reductions.solvers import utilities
@@ -58,11 +56,18 @@ class Dims:
         self.n_ineqs = int(dims.get(s.LEQ_DIM, 0))
         self.socs = [int(d) for d in dims.get(s.SOC_DIM, [])]
         self.n_exps = int(dims.get(s.EXP_DIM, 0))
+        print(dims)
+        self.psds = dims.get(s.PSD_DIM, [])
+        self.pow3ds = dims.get("p", [])
+        self.n_pow3d = len(self.pow3ds)
         self.n_socs = len(self.socs)
-        self.n_cones = self.n_socs + self.n_exps
+        self.n_psds = len(self.psds)
+        self.n_cones = self.n_socs + self.n_exps + self.n_pow3d + self.n_psds
         self.n_soc_vars = sum(self.socs)
         self.n_exp_vars = 3 * self.n_exps
-        self.n_cone_vars = self.n_soc_vars + self.n_exp_vars
+        self.n_psd_vars = sum(d * (d + 1) // 2 for d in self.psds)
+        self.n_pow3d_vars = 3 * self.n_pow3d
+        self.n_cone_vars = self.n_soc_vars + self.n_exp_vars + self.n_pow3d_vars + self.n_psd_vars
 
 
 class CB:
@@ -80,6 +85,13 @@ class ECCP:
         self.x = x
         self.c = c
 
+class P3dCCP:
+    # Power cone 3D callback parameters.
+    def __init__(self, n, x, c, a):
+        self.n = n
+        self.x = x
+        self.c = c
+        self.a = a
 
 def build_exp_cb() -> CB:
     import knitro as kn
@@ -157,6 +169,69 @@ def build_exp_cb() -> CB:
     return CB(f=f, grad=grad, hess=hess)
 
 
+def build_pow3d_cb() -> CB:
+    import knitro as kn
+
+    def f(
+        _,
+        cb: kn.CB_context,
+        req: kn.KN_eval_request,
+        res: kn.KN_eval_result,
+        params: P3dCCP,
+    ):
+        if req.type != kn.KN_RC_EVALFC:
+            return -1
+        v = req.x
+        for k in range(params.n):
+            j = params.x[k]
+            x, y, z = v[j : j + 3]
+            a = params.a[k]
+            res.c[k] = np.power(x, a) * np.power(y, 1-a) - np.abs(z)
+    
+        return 0
+
+    def grad(
+        _,
+        cb: kn.CB_context,
+        req: kn.KN_eval_request,
+        res: kn.KN_eval_result,
+        params: P3dCCP,
+    ):
+        if req.type != kn.KN_RC_EVALGA:
+            return -1
+        v = req.x
+        for k in range(params.n):
+            j = params.x[k]
+            x, y, z = v[j : j + 3]
+            a = params.a[k]
+            res.jac[3 * k] = a * np.power(x, a - 1) * np.power(y, 1 - a)
+            res.jac[3 * k + 1] = (1 - a) * np.power(x, a) * np.power(y, -a) 
+            res.jac[3 * k + 2] = -np.sign(z)
+        return 0
+
+    def hess(
+        _,
+        cb: kn.CB_context,
+        req: kn.KN_eval_request,
+        res: kn.KN_eval_result,
+        params: P3dCCP,
+    ):
+        if req.type != kn.KN_RC_EVALH and req.type != kn.KN_RC_EVALH_NO_F:
+            return -1
+        v = req.x
+        u = req.lambda_
+        for k in range(params.n):
+            j = params.x[k]
+            i = params.c[k]
+            x, y = v[j : j + 2]
+            a = params.a[k]
+            b = a * (1 - a)
+            res.hess[3 * k] = -b * np.power(x, a - 2) * np.power(y, 1 - a) * u[i]
+            res.hess[3 * k + 1] = b * np.power(x, a - 1) * np.power(y, -a) * u[i]
+            res.hess[3 * k + 2] = -b * np.power(x, a) * np.power(y, -a - 1) * u[i]
+        return 0
+    return CB(f=f, grad=grad, hess=hess)
+
 class KNITRO(ConicSolver):
     """
     Conic interface for the Knitro solver.
@@ -165,7 +240,7 @@ class KNITRO(ConicSolver):
     # Solver capabilities.
     MIP_CAPABLE = True
     BOUNDED_VARIABLES = True
-    SUPPORTED_CONSTRAINTS = ConicSolver.SUPPORTED_CONSTRAINTS + [SOC, ExpCone]
+    SUPPORTED_CONSTRAINTS = ConicSolver.SUPPORTED_CONSTRAINTS + [SOC, ExpCone, PowCone3D]
     MI_SUPPORTED_CONSTRAINTS = SUPPORTED_CONSTRAINTS
 
     # Keys:
@@ -329,6 +404,7 @@ class KNITRO(ConicSolver):
                     dual_vars = {**eq_dual_vars, **ineq_dual_vars}
                 solution = Solution(status, obj, primal_vars, dual_vars, attr)
         # Free the Knitro context.
+        print(solution)
         kn.KN_free(kc)
         return solution
 
@@ -496,6 +572,42 @@ class KNITRO(ConicSolver):
             kn.KN_set_cb_user_params(kc, kb, params)
         con_offset += dims.n_exps
         var_offset += dims.n_exp_vars
+
+        if dims.n_pow3d > 0:
+            con_idxs = con_offset + np.arange(dims.n_pow3d)
+            var_idxs = var_offset + np.arange(dims.n_pow3d_vars)
+            bnds = np.zeros_like(con_idxs, dtype=float)
+            kn.KN_set_con_lobnds(kc, indexCons=con_idxs, cLoBnds=bnds)
+            kn.KN_set_var_lobnds(kc, indexVars=var_idxs[0::3], xLoBnds=bnds)
+            kn.KN_set_var_lobnds(kc, indexVars=var_idxs[1::3], xLoBnds=bnds)
+
+            cb = build_pow3d_cb()
+
+            kb = kn.KN_add_eval_callback(kc, indexCons=con_idxs, funcCallback=cb.f)
+            jac_con_idxs = np.repeat(con_idxs, 3)
+            jac_var_idxs = var_idxs
+            kn.KN_set_cb_grad(
+                kc,
+                kb,
+                jacIndexCons=jac_con_idxs,
+                jacIndexVars=jac_var_idxs,
+                gradCallback=cb.grad,
+            )
+            hess_var_idxs = np.repeat(var_idxs[0::3], 3)
+            hess_var1_idxs = hess_var_idxs + np.tile(np.array([0, 0, 1]), dims.n_pow3d)
+            hess_var2_idxs = hess_var_idxs + np.tile(np.array([0, 1, 1]), dims.n_pow3d)
+            kn.KN_set_cb_hess(
+                kc,
+                kb,
+                hessIndexVars1=hess_var1_idxs,
+                hessIndexVars2=hess_var2_idxs,
+                hessCallback=cb.hess,
+            )
+            params = P3dCCP(n=dims.n_pow3d, x=var_idxs[0::3], c=con_idxs, a=dims.pow3ds)
+            kn.KN_set_cb_user_params(kc, kb, params)
+
+        if dims.n_psds > 0:
+            pass
 
         # Set the initial values of the dual variables.
         if KNITRO.Y_INIT_KEY in solver_opts:
