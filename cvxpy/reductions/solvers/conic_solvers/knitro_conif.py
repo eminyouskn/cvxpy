@@ -84,6 +84,7 @@ class ECCP:
         self.x = x
         self.c = c
 
+
 class P3dCCP:
     # Power cone 3D callback parameters.
     def __init__(self, n, x, c, a):
@@ -91,6 +92,7 @@ class P3dCCP:
         self.x = x
         self.c = c
         self.a = a
+
 
 def build_exp_cb() -> CB:
     import knitro as kn
@@ -185,8 +187,8 @@ def build_pow3d_cb() -> CB:
             j = params.x[k]
             x, y, z = v[j : j + 3]
             a = params.a[k]
-            res.c[k] = np.power(x, a) * np.power(y, 1-a) - np.abs(z)
-    
+            res.c[k] = np.power(x, a) * np.power(y, 1 - a) - np.abs(z)
+
         return 0
 
     def grad(
@@ -204,7 +206,7 @@ def build_pow3d_cb() -> CB:
             x, y, z = v[j : j + 3]
             a = params.a[k]
             res.jac[3 * k] = a * np.power(x, a - 1) * np.power(y, 1 - a)
-            res.jac[3 * k + 1] = (1 - a) * np.power(x, a) * np.power(y, -a) 
+            res.jac[3 * k + 1] = (1 - a) * np.power(x, a) * np.power(y, -a)
             res.jac[3 * k + 2] = -np.sign(z)
         return 0
 
@@ -229,7 +231,9 @@ def build_pow3d_cb() -> CB:
             res.hess[3 * k + 1] = b * np.power(x, a - 1) * np.power(y, -a) * u[i]
             res.hess[3 * k + 2] = -b * np.power(x, a) * np.power(y, -a - 1) * u[i]
         return 0
+
     return CB(f=f, grad=grad, hess=hess)
+
 
 class KNITRO(ConicSolver):
     """
@@ -403,7 +407,6 @@ class KNITRO(ConicSolver):
                     dual_vars = {**eq_dual_vars, **ineq_dual_vars}
                 solution = Solution(status, obj, primal_vars, dual_vars, attr)
         # Free the Knitro context.
-        print(solution)
         kn.KN_free(kc)
         return solution
 
@@ -520,21 +523,32 @@ class KNITRO(ConicSolver):
 
         var_offset = n_vars
         con_offset = n_cons
-        for k in range(dims.n_socs):
-            var_idxs = var_offset + np.arange(dims.socs[k])
-            con_idx = con_offset + k
-            coefs = np.ones_like(var_idxs, dtype=float)
-            coefs[0] *= -1.0
-            kn.KN_set_var_lobnds(kc, indexVars=var_idxs[0], xLoBnds=0.0)
+        if dims.n_socs > 0:
+            con_idxs = con_offset + np.arange(dims.n_socs)
+            var_idxs = var_offset + np.insert(np.cumsum(dims.socs), 0, 0)[:-1]
+            bnds = np.zeros_like(con_idxs, dtype=float)
+            coefs = -np.ones_like(var_idxs, dtype=float)
+            kn.KN_set_con_upbnds(kc, indexCons=con_idxs, cUpBnds=bnds)
+            kn.KN_set_var_lobnds(kc, indexVars=var_idxs, xLoBnds=bnds)
             kn.KN_add_con_quadratic_struct(
                 kc,
-                indexCons=con_idx,
+                indexCons=con_idxs,
                 indexVars1=var_idxs,
                 indexVars2=var_idxs,
                 coefs=coefs,
             )
-            kn.KN_set_con_upbnds(kc, indexCons=con_idx, cUpBnds=0.0)
-            var_offset += dims.socs[k]
+            for k in range(dims.n_socs):
+                con_idx = con_offset + k
+                var_idxs = var_offset + np.arange(dims.socs[k])
+                coefs = np.ones_like(var_idxs[1:], dtype=float)
+                kn.KN_add_con_quadratic_struct(
+                    kc,
+                    indexCons=con_idx,
+                    indexVars1=var_idxs[1:],
+                    indexVars2=var_idxs[1:],
+                    coefs=coefs,
+                )
+                var_offset += dims.socs[k]
         con_offset += dims.n_socs
 
         if dims.n_exps > 0:
