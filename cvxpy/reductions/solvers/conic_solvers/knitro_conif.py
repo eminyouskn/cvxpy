@@ -40,14 +40,14 @@ def kn_isinf(x) -> bool:
     return False
 
 
-def kn_rm_inf(arr) -> tuple[list[int], list[float]]:
+def kn_rm_inf(a) -> tuple[list[int], list[float]]:
     """Convert -inf to -kn.KN_INFINITY and inf to kn.KN_INFINITY."""
-    idx, a = [], []
-    for i, v in enumerate(arr):
+    i, vs = [], []
+    for j, v in enumerate(a):
         if not kn_isinf(v):
-            idx.append(i)
-            a.append(v)
-    return idx, a
+            i.append(j)
+            vs.append(v)
+    return i, vs
 
 
 class Dims:
@@ -77,29 +77,19 @@ class CB:
         self.hess = hess
 
 
-class CCtx:
-    # Callback context for the Knitro solver.
-    def __init__(self, n: int, vp: int, cp: int):
+class Ctx:
+    def __init__(self, n: int, vp: int, cp: int, a=None):
         self.n = n  # Number of constraints
         self.vp = vp  # Variable position
         self.cp = cp  # Constraint position
-
-
-class ECCtx(CCtx):
-    pass
-
-
-class P3dCCtx(CCtx):
-    # Power cone 3D callback parameters.
-    def __init__(self, n: int, vp: int, cp: int, a):
-        super().__init__(n, vp, cp)
-        self.a = np.array(a)
+        if a is not None:
+            self.a = np.array(a)
 
 
 def build_exp_cb() -> CB:
     import knitro as kn
 
-    def f(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: ECCtx):
+    def f(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: Ctx):
         if req.type != kn.KN_RC_EVALFC:
             return -1
         n = ctx.n
@@ -116,7 +106,7 @@ def build_exp_cb() -> CB:
         res.c[:n] = np.where(mask, ind, y * exp - z)
         return 0
 
-    def grad(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: ECCtx):
+    def grad(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: Ctx):
         if req.type != kn.KN_RC_EVALGA:
             return -1
         n = ctx.n
@@ -133,7 +123,7 @@ def build_exp_cb() -> CB:
         res.jac[2::3] = np.where(mask, np.inf, -1.0)
         return 0
 
-    def hess(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: ECCtx):
+    def hess(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: Ctx):
         if req.type != kn.KN_RC_EVALH and req.type != kn.KN_RC_EVALH_NO_F:
             return -1
         n = ctx.n
@@ -160,7 +150,7 @@ def build_exp_cb() -> CB:
 def build_pow3d_cb() -> CB:
     import knitro as kn
 
-    def f(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: P3dCCtx):
+    def f(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: Ctx):
         if req.type != kn.KN_RC_EVALFC:
             return -1
         n = ctx.n
@@ -170,10 +160,10 @@ def build_pow3d_cb() -> CB:
         x = v[0::3]
         y = v[1::3]
         z = v[2::3]
-        res.c[:n] = np.power(x, a) * np.power(y, 1 - a) - np.abs(z)
+        res.c[:n] = -np.power(x, a) * np.power(y, 1 - a) + np.abs(z)
         return 0
 
-    def grad(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: P3dCCtx):
+    def grad(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: Ctx):
         if req.type != kn.KN_RC_EVALGA:
             return -1
         n = ctx.n
@@ -183,12 +173,12 @@ def build_pow3d_cb() -> CB:
         x = v[0::3]
         y = v[1::3]
         z = v[2::3]
-        res.jac[0::3] = a * np.power(x, a - 1) * np.power(y, 1 - a)
-        res.jac[1::3] = (1 - a) * np.power(x, a) * np.power(y, -a)
-        res.jac[2::3] = -np.sign(z)
+        res.jac[0::3] = -a * np.power(x, a - 1) * np.power(y, 1 - a)
+        res.jac[1::3] = -(1 - a) * np.power(x, a) * np.power(y, -a)
+        res.jac[2::3] = np.sign(z)
         return 0
 
-    def hess(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: P3dCCtx):
+    def hess(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: Ctx):
         if req.type != kn.KN_RC_EVALH and req.type != kn.KN_RC_EVALH_NO_F:
             return -1
         n = ctx.n
@@ -200,9 +190,9 @@ def build_pow3d_cb() -> CB:
         u = np.asarray(req.lambda_[cp : cp + n])
         x = v[0::3]
         y = v[1::3]
-        res.hess[0::3] = -b * np.power(x, a - 2) * np.power(y, 1 - a) * u
-        res.hess[1::3] = b * np.power(x, a - 1) * np.power(y, -a) * u
-        res.hess[2::3] = -b * np.power(x, a) * np.power(y, -a - 1) * u
+        res.hess[0::3] = b * np.power(x, a - 2) * np.power(y, 1 - a) * u
+        res.hess[1::3] = -b * np.power(x, a - 1) * np.power(y, -a) * u
+        res.hess[2::3] = b * np.power(x, a) * np.power(y, -a - 1) * u
         return 0
 
     return CB(f=f, grad=grad, hess=hess)
@@ -432,29 +422,29 @@ class KNITRO(ConicSolver):
 
         # Set the lower and upper bounds on the variables.
         if lb is not None:
-            idxs, lb = kn_rm_inf(lb)
-            kn.KN_set_var_lobnds(kc, indexVars=idxs, xLoBnds=lb)
+            i, lb = kn_rm_inf(lb)
+            kn.KN_set_var_lobnds(kc, indexVars=i, xLoBnds=lb)
         if ub is not None:
-            idxs, ub = kn_rm_inf(ub)
-            kn.KN_set_var_upbnds(kc, indexVars=idxs, xUpBnds=ub)
+            i, ub = kn_rm_inf(ub)
+            kn.KN_set_var_upbnds(kc, indexVars=i, xUpBnds=ub)
 
         # Set the variable types.
         # - default: KN_VARTYPE_CONTINUOUS.
         # - binray: KN_VARTYPE_BINARY.
         # - integer: KN_VARTYPE_INTEGER.
-        var_types = [kn.KN_VARTYPE_CONTINUOUS] * n_vars
+        vts = [kn.KN_VARTYPE_CONTINUOUS] * n_vars
         if s.BOOL_IDX in data:
             for j in data[s.BOOL_IDX]:
-                var_types[j] = kn.KN_VARTYPE_BINARY
+                vts[j] = kn.KN_VARTYPE_BINARY
         if s.INT_IDX in data:
             for j in data[s.INT_IDX]:
-                var_types[j] = kn.KN_VARTYPE_INTEGER
-        kn.KN_set_var_types(kc, xTypes=var_types)
+                vts[j] = kn.KN_VARTYPE_INTEGER
+        kn.KN_set_var_types(kc, xTypes=vts)
 
         # Set the initial values of the primal variables.
         if KNITRO.X_INIT_KEY in solver_opts:
-            idxs, vals = solver_opts[KNITRO.X_INIT_KEY]
-            kn.KN_set_var_primal_init_values(kc, indexVars=idxs, xInitVals=vals)
+            i, vs = solver_opts[KNITRO.X_INIT_KEY]
+            kn.KN_set_var_primal_init_values(kc, indexVars=i, xInitVals=vs)
 
         # Add constraints to the problem.
         n_cons = int(A.shape[0]) if A is not None else 0
@@ -469,126 +459,97 @@ class KNITRO(ConicSolver):
 
         D = sp.coo_matrix(A)
         if D.nnz != 0:
-            con_idxs, var_idxs, coefs = D.row, D.col, D.data
-            kn.KN_add_con_linear_struct(kc, indexCons=con_idxs, indexVars=var_idxs, coefs=coefs)
+            cis, vis, coefs = D.row, D.col, D.data
+            kn.KN_add_con_linear_struct(kc, indexCons=cis, indexVars=vis, coefs=coefs)
 
-        con_idxs = np.arange(n_cons)
-        kn.KN_set_con_eqbnds(kc, indexCons=con_idxs[: dims.n_eqs], cEqBnds=b[: dims.n_eqs])
-        kn.KN_set_con_upbnds(
-            kc,
-            indexCons=con_idxs[dims.n_eqs : -dims.n_cone_vars],
-            cUpBnds=b[dims.n_eqs : -dims.n_cone_vars],
-        )
-        kn.KN_set_con_eqbnds(
-            kc,
-            indexCons=con_idxs[-dims.n_cone_vars :],
-            cEqBnds=b[-dims.n_cone_vars :],
-        )
+        cp = 0
+        if dims.n_eqs > 0:
+            cis = cp + np.arange(dims.n_eqs)
+            kn.KN_set_con_eqbnds(kc, indexCons=cis, cEqBnds=b[cis])
+        cp += dims.n_eqs
 
-        var_idxs = n_vars + np.arange(dims.n_cone_vars)
-        coefs = np.ones_like(var_idxs, dtype=float)
-        kn.KN_add_con_linear_struct(
-            kc,
-            indexCons=con_idxs[-dims.n_cone_vars :],
-            indexVars=var_idxs,
-            coefs=coefs,
-        )
+        if dims.n_ineqs > 0:
+            cis = cp + np.arange(dims.n_ineqs)
+            kn.KN_set_con_upbnds(kc, indexCons=cis, cUpBnds=b[cis])
+        cp += dims.n_ineqs
 
-        vp, cp = n_vars, n_cons
+        if dims.n_cone_vars > 0:
+            vis = n_vars + np.arange(dims.n_cone_vars)
+            cis = cp + np.arange(dims.n_cone_vars)
+            coefs = np.ones_like(vis)
+            kn.KN_set_con_eqbnds(kc, indexCons=cis, cEqBnds=b[cis])
+            kn.KN_add_con_linear_struct(kc, indexCons=cis, indexVars=vis, coefs=coefs)
+        cp += dims.n_cone_vars
+
+        # Set the upper bounds on the cone constraints.
+        if dims.n_cones > 0:
+            cis = cp + np.arange(dims.n_cones)
+            bnds = np.zeros_like(cis)
+            kn.KN_set_con_upbnds(kc, indexCons=cis, cUpBnds=bnds)
+
+        vp = n_vars
         if dims.n_socs > 0:
-            con_idxs = cp + np.arange(dims.n_socs)
-            var_idxs = vp + np.insert(np.cumsum(dims.socs), 0, 0)[:-1]
-            bnds = np.zeros_like(con_idxs, dtype=float)
-            coefs = -np.ones_like(var_idxs, dtype=float)
-            kn.KN_set_con_upbnds(kc, indexCons=con_idxs, cUpBnds=bnds)
-            kn.KN_set_var_lobnds(kc, indexVars=var_idxs, xLoBnds=bnds)
+            cis = cp + np.arange(dims.n_socs)
+            vis = vp + np.insert(np.cumsum(dims.socs), 0, 0)[:-1]
+            bnds = np.zeros_like(cis)
+            coefs = -np.ones_like(vis)
+            kn.KN_set_var_lobnds(kc, indexVars=vis, xLoBnds=bnds)
             kn.KN_add_con_quadratic_struct(
-                kc,
-                indexCons=con_idxs,
-                indexVars1=var_idxs,
-                indexVars2=var_idxs,
-                coefs=coefs,
+                kc, indexCons=cis, indexVars1=vis, indexVars2=vis, coefs=coefs
             )
             for k in range(dims.n_socs):
-                con_idx = cp + k
-                var_idxs = vp + np.arange(1, dims.socs[k])
-                coefs = np.ones_like(var_idxs, dtype=float)
+                vis = vp + np.arange(1, dims.socs[k])
+                coefs = np.ones_like(vis)
                 kn.KN_add_con_quadratic_struct(
-                    kc,
-                    indexCons=con_idx,
-                    indexVars1=var_idxs,
-                    indexVars2=var_idxs,
-                    coefs=coefs,
+                    kc, indexCons=cp, indexVars1=vis, indexVars2=vis, coefs=coefs
                 )
                 vp += dims.socs[k]
-        cp += dims.n_socs
+                cp += 1
 
         if dims.n_exps > 0:
-            con_idxs = cp + np.arange(dims.n_exps)
-            var_idxs = vp + np.arange(dims.n_exp_vars)
-            bnds = np.zeros_like(con_idxs, dtype=float)
-            kn.KN_set_con_upbnds(kc, indexCons=con_idxs, cUpBnds=bnds)
-            kn.KN_set_var_lobnds(kc, indexVars=var_idxs[1::3], xLoBnds=bnds)
-            kn.KN_set_var_lobnds(kc, indexVars=var_idxs[2::3], xLoBnds=bnds)
+            cis = cp + np.arange(dims.n_exps)
+            vis = vp + np.arange(dims.n_exp_vars)
+            bnds = np.zeros_like(cis)
+            kn.KN_set_var_lobnds(kc, indexVars=vis[1::3], xLoBnds=bnds)
+            kn.KN_set_var_lobnds(kc, indexVars=vis[2::3], xLoBnds=bnds)
 
             cb = build_exp_cb()
 
-            kb = kn.KN_add_eval_callback(kc, indexCons=con_idxs, funcCallback=cb.f)
-            jac_con_idxs = np.repeat(con_idxs, 3)
-            jac_var_idxs = var_idxs
-            kn.KN_set_cb_grad(
-                kc,
-                kb,
-                jacIndexCons=jac_con_idxs,
-                jacIndexVars=jac_var_idxs,
-                gradCallback=cb.grad,
-            )
-            hess_var_idxs = np.repeat(var_idxs[0::3], 3)
-            hess_var1_idxs = hess_var_idxs + np.tile(np.array([0, 0, 1]), dims.n_exps)
-            hess_var2_idxs = hess_var_idxs + np.tile(np.array([0, 1, 1]), dims.n_exps)
+            kb = kn.KN_add_eval_callback(kc, indexCons=cis, funcCallback=cb.f)
+            jcis = np.repeat(cis, 3)
+            jvis = vis
+            kn.KN_set_cb_grad(kc, kb, jacIndexCons=jcis, jacIndexVars=jvis, gradCallback=cb.grad)
+            hvis = np.repeat(vis[0::3], 3)
+            hvis1 = hvis + np.tile(np.array([0, 0, 1]), dims.n_exps)
+            hvis2 = hvis + np.tile(np.array([0, 1, 1]), dims.n_exps)
             kn.KN_set_cb_hess(
-                kc,
-                kb,
-                hessIndexVars1=hess_var1_idxs,
-                hessIndexVars2=hess_var2_idxs,
-                hessCallback=cb.hess,
+                kc, kb, hessIndexVars1=hvis1, hessIndexVars2=hvis2, hessCallback=cb.hess
             )
-            ctx = ECCtx(n=dims.n_exps, vp=vp, cp=cp)
+            ctx = Ctx(n=dims.n_exps, vp=vp, cp=cp)
             kn.KN_set_cb_user_params(kc, kb, ctx)
         cp += dims.n_exps
         vp += dims.n_exp_vars
 
         if dims.n_pow3d > 0:
-            con_idxs = cp + np.arange(dims.n_pow3d)
-            var_idxs = vp + np.arange(dims.n_pow3d_vars)
-            bnds = np.zeros_like(con_idxs, dtype=float)
-            kn.KN_set_con_lobnds(kc, indexCons=con_idxs, cLoBnds=bnds)
-            kn.KN_set_var_lobnds(kc, indexVars=var_idxs[0::3], xLoBnds=bnds)
-            kn.KN_set_var_lobnds(kc, indexVars=var_idxs[1::3], xLoBnds=bnds)
+            cis = cp + np.arange(dims.n_pow3d)
+            vis = vp + np.arange(dims.n_pow3d_vars)
+            bnds = np.zeros_like(cis)
+            kn.KN_set_var_lobnds(kc, indexVars=vis[0::3], xLoBnds=bnds)
+            kn.KN_set_var_lobnds(kc, indexVars=vis[1::3], xLoBnds=bnds)
 
             cb = build_pow3d_cb()
 
-            kb = kn.KN_add_eval_callback(kc, indexCons=con_idxs, funcCallback=cb.f)
-            jac_con_idxs = np.repeat(con_idxs, 3)
-            jac_var_idxs = var_idxs
-            kn.KN_set_cb_grad(
-                kc,
-                kb,
-                jacIndexCons=jac_con_idxs,
-                jacIndexVars=jac_var_idxs,
-                gradCallback=cb.grad,
-            )
-            hess_var_idxs = np.repeat(var_idxs[0::3], 3)
-            hess_var1_idxs = hess_var_idxs + np.tile(np.array([0, 0, 1]), dims.n_pow3d)
-            hess_var2_idxs = hess_var_idxs + np.tile(np.array([0, 1, 1]), dims.n_pow3d)
+            kb = kn.KN_add_eval_callback(kc, indexCons=cis, funcCallback=cb.f)
+            jcis = np.repeat(cis, 3)
+            jvis = vis
+            kn.KN_set_cb_grad(kc, kb, jacIndexCons=jcis, jacIndexVars=jvis, gradCallback=cb.grad)
+            hvis = np.repeat(vis[0::3], 3)
+            hvis1 = hvis + np.tile(np.array([0, 0, 1]), dims.n_pow3d)
+            hvis2 = hvis + np.tile(np.array([0, 1, 1]), dims.n_pow3d)
             kn.KN_set_cb_hess(
-                kc,
-                kb,
-                hessIndexVars1=hess_var1_idxs,
-                hessIndexVars2=hess_var2_idxs,
-                hessCallback=cb.hess,
+                kc, kb, hessIndexVars1=hvis1, hessIndexVars2=hvis2, hessCallback=cb.hess
             )
-            ctx = P3dCCtx(n=dims.n_pow3d, vp=vp, cp=cp, a=dims.pow3ds)
+            ctx = Ctx(n=dims.n_pow3d, vp=vp, cp=cp, a=dims.pow3ds)
             kn.KN_set_cb_user_params(kc, kb, ctx)
         cp += dims.n_pow3d
         vp += dims.n_pow3d_vars
@@ -598,37 +559,35 @@ class KNITRO(ConicSolver):
 
         # Set the initial values of the dual variables.
         if KNITRO.Y_INIT_KEY in solver_opts:
-            idxs, vals = solver_opts[KNITRO.Y_INIT_KEY]
-            kn.KN_set_con_dual_init_values(kc, indexCons=idxs, yInitVals=vals)
+            i, vs = solver_opts[KNITRO.Y_INIT_KEY]
+            kn.KN_set_con_dual_init_values(kc, indexCons=i, yInitVals=vs)
 
         # Set the linear part of the objective function.
         if c is not None:
-            var_idxs = np.arange(n_vars)
-            kn.KN_add_obj_linear_struct(kc, indexVars=var_idxs, coefs=c)
+            vis = np.arange(n_vars)
+            kn.KN_add_obj_linear_struct(kc, indexVars=vis, coefs=c)
 
         # Set the quadratic part of the objective function.
         if P is not None and P.nnz != 0:
             Q = sp.coo_matrix(0.5 * P)
-            var1_idxs, var2_idxs, coefs = Q.row, Q.col, Q.data
-            kn.KN_add_obj_quadratic_struct(
-                kc, indexVars1=var1_idxs, indexVars2=var2_idxs, coefs=coefs
-            )
+            vis1, vis2, coefs = Q.row, Q.col, Q.data
+            kn.KN_add_obj_quadratic_struct(kc, indexVars1=vis1, indexVars2=vis2, coefs=coefs)
 
         # Set the sense of the objective function.
         kn.KN_set_obj_goal(kc, kn.KN_OBJGOAL_MINIMIZE)
 
         # Set the values of the parameters.
-        for key, val in solver_opts.items():
-            if key in KNITRO.INTERFACE_ARGS:
+        for k, v in solver_opts.items():
+            if k in KNITRO.INTERFACE_ARGS:
                 continue
-            param_id = kn.KN_get_param_id(kc, key)
-            param_type = kn.KN_get_param_type(kc, param_id)
+            pid = kn.KN_get_param_id(kc, k)
+            pt = kn.KN_get_param_type(kc, pid)
             fn = kn.KN_set_char_param
-            if param_type == kn.KN_PARAMTYPE_INTEGER:
+            if pt == kn.KN_PARAMTYPE_INTEGER:
                 fn = kn.KN_set_int_param
-            elif param_type == kn.KN_PARAMTYPE_FLOAT:
+            elif pt == kn.KN_PARAMTYPE_FLOAT:
                 fn = kn.KN_set_double_param
-            fn(kc, param_id, val)
+            fn(kc, pid, v)
 
         # Optimize the problem.
         try:
