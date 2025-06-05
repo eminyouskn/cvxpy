@@ -422,7 +422,7 @@ class KNITRO(ConicSolver):
 
         if not verbose:
             # Disable Knitro output.
-            kn.KN_set_int_param(kc, kn.KN_PARAM_OUTLEV, kn.KN_OUTLEV_ALL)
+            kn.KN_set_int_param(kc, kn.KN_PARAM_OUTLEV, kn.KN_OUTLEV_NONE)
 
         n_vars = int(c.shape[0])
         results[KNITRO.N_VARS_KEY] = n_vars
