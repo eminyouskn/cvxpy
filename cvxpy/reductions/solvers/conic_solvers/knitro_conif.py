@@ -77,94 +77,81 @@ class CB:
         self.hess = hess
 
 
-class ECCP:
-    # Exponential cone callback parameters.
-    def __init__(self, n, x, c):
-        self.n = n
-        self.x = x
-        self.c = c
+class CCtx:
+    # Callback context for the Knitro solver.
+    def __init__(self, n: int, vp: int, cp: int):
+        self.n = n  # Number of constraints
+        self.vp = vp  # Variable position
+        self.cp = cp  # Constraint position
 
 
-class P3dCCP:
+class ECCtx(CCtx):
+    pass
+
+
+class P3dCCtx(CCtx):
     # Power cone 3D callback parameters.
-    def __init__(self, n, x, c, a):
-        self.n = n
-        self.x = x
-        self.c = c
-        self.a = a
+    def __init__(self, n: int, vp: int, cp: int, a):
+        super().__init__(n, vp, cp)
+        self.a = np.array(a)
 
 
 def build_exp_cb() -> CB:
     import knitro as kn
 
-    def f(
-        _,
-        cb: kn.CB_context,
-        req: kn.KN_eval_request,
-        res: kn.KN_eval_result,
-        params: ECCP,
-    ):
+    def f(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: ECCtx):
         if req.type != kn.KN_RC_EVALFC:
             return -1
-        v = req.x
-        for k in range(params.n):
-            j = params.x[k]
-            x, y, z = v[j : j + 3]
-            if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
-                if x <= 0.0:
-                    res.c[k] = -1.0
-                else:
-                    res.c[k] = 0.0
-            else:
-                res.c[k] = y * np.exp(x / y) - z
+        n = ctx.n
+        vp = ctx.vp
+        v = np.asarray(req.x[vp : vp + 3 * n])
+        x = v[0::3]
+        y = v[1::3]
+        z = v[2::3]
+        xy = np.divide(x, y)
+        with np.errstate(over="ignore"):
+            exp = np.exp(xy)
+        mask = (np.isclose(y, 0.0)) | np.isnan(xy) | np.isnan(exp) | np.isinf(exp)
+        ind = np.where(x <= 0.0, -1.0, 0.0)
+        res.c[:n] = np.where(mask, ind, y * exp - z)
         return 0
 
-    def grad(
-        _,
-        cb: kn.CB_context,
-        req: kn.KN_eval_request,
-        res: kn.KN_eval_result,
-        params: ECCP,
-    ):
+    def grad(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: ECCtx):
         if req.type != kn.KN_RC_EVALGA:
             return -1
-        v = req.x
-        for k in range(params.n):
-            j = params.x[k]
-            x, y = v[j], v[j + 1]
-            if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
-                res.jac[3 * k] = kn.KN_INFINITY
-                res.jac[3 * k + 1] = kn.KN_INFINITY
-                res.jac[3 * k + 2] = kn.KN_INFINITY
-            else:
-                res.jac[3 * k] = np.exp(x / y)
-                res.jac[3 * k + 1] = (1 - (x / y)) * np.exp(x / y)
-                res.jac[3 * k + 2] = -1.0
+        n = ctx.n
+        vp = ctx.vp
+        v = np.asarray(req.x[vp : vp + 3 * n])
+        x = v[0::3]
+        y = v[1::3]
+        xy = np.divide(x, y)
+        with np.errstate(over="ignore"):
+            exp = np.exp(xy)
+        mask = (np.isclose(y, 0.0)) | np.isnan(xy) | np.isnan(exp) | np.isinf(exp)
+        res.jac[0::3] = np.where(mask, np.inf, exp)
+        res.jac[1::3] = np.where(mask, np.inf, (1 - xy) * exp)
+        res.jac[2::3] = np.where(mask, np.inf, -1.0)
         return 0
 
-    def hess(
-        _,
-        cb: kn.CB_context,
-        req: kn.KN_eval_request,
-        res: kn.KN_eval_result,
-        params: ECCP,
-    ):
+    def hess(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: ECCtx):
         if req.type != kn.KN_RC_EVALH and req.type != kn.KN_RC_EVALH_NO_F:
             return -1
-        v = req.x
-        u = req.lambda_
-        for k in range(params.n):
-            j = params.x[k]
-            i = params.c[k]
-            x, y = v[j], v[j + 1]
-            if np.isclose(y, 0.0) or (x / y) > KNITRO.EXP_DOUBLE_LIMIT:
-                res.hess[3 * k] = kn.KN_INFINITY
-                res.hess[3 * k + 1] = kn.KN_INFINITY
-                res.hess[3 * k + 2] = kn.KN_INFINITY
-            else:
-                res.hess[3 * k] = (1 / y) * np.exp(x / y) * u[i]
-                res.hess[3 * k + 1] = -(x / y**2) * np.exp(x / y) * u[i]
-                res.hess[3 * k + 2] = (x**2 / y**3) * np.exp(x / y) * u[i]
+        n = ctx.n
+        vp = ctx.vp
+        cp = ctx.cp
+        v = np.asarray(req.x[vp : vp + 3 * n])
+        u = np.asarray(req.lambda_[cp : cp + n])
+        x = v[0::3]
+        y = v[1::3]
+        xy = np.divide(x, y)
+        with np.errstate(over="ignore"):
+            exp = np.exp(xy)
+        mask = (np.isclose(y, 0.0)) | np.isnan(xy) | np.isnan(exp) | np.isinf(exp)
+        iy = np.divide(1, y)
+        hx = iy * exp * u
+        res.hess[0::3] = np.where(mask, np.inf, hx)
+        res.hess[1::3] = np.where(mask, np.inf, -xy * hx)
+        res.hess[2::3] = np.where(mask, np.inf, (xy**2) * hx)
         return 0
 
     return CB(f=f, grad=grad, hess=hess)
@@ -173,63 +160,49 @@ def build_exp_cb() -> CB:
 def build_pow3d_cb() -> CB:
     import knitro as kn
 
-    def f(
-        _,
-        cb: kn.CB_context,
-        req: kn.KN_eval_request,
-        res: kn.KN_eval_result,
-        params: P3dCCP,
-    ):
+    def f(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: P3dCCtx):
         if req.type != kn.KN_RC_EVALFC:
             return -1
-        v = req.x
-        for k in range(params.n):
-            j = params.x[k]
-            x, y, z = v[j : j + 3]
-            a = params.a[k]
-            res.c[k] = np.power(x, a) * np.power(y, 1 - a) - np.abs(z)
-
+        n = ctx.n
+        vp = ctx.vp
+        a = ctx.a
+        v = np.asarray(req.x[vp : vp + 3 * n])
+        x = v[0::3]
+        y = v[1::3]
+        z = v[2::3]
+        res.c[:n] = np.power(x, a) * np.power(y, 1 - a) - np.abs(z)
         return 0
 
-    def grad(
-        _,
-        cb: kn.CB_context,
-        req: kn.KN_eval_request,
-        res: kn.KN_eval_result,
-        params: P3dCCP,
-    ):
+    def grad(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: P3dCCtx):
         if req.type != kn.KN_RC_EVALGA:
             return -1
-        v = req.x
-        for k in range(params.n):
-            j = params.x[k]
-            x, y, z = v[j : j + 3]
-            a = params.a[k]
-            res.jac[3 * k] = a * np.power(x, a - 1) * np.power(y, 1 - a)
-            res.jac[3 * k + 1] = (1 - a) * np.power(x, a) * np.power(y, -a)
-            res.jac[3 * k + 2] = -np.sign(z)
+        n = ctx.n
+        vp = ctx.vp
+        a = ctx.a
+        v = np.asarray(req.x[vp : vp + 3 * n])
+        x = v[0::3]
+        y = v[1::3]
+        z = v[2::3]
+        res.jac[0::3] = a * np.power(x, a - 1) * np.power(y, 1 - a)
+        res.jac[1::3] = (1 - a) * np.power(x, a) * np.power(y, -a)
+        res.jac[2::3] = -np.sign(z)
         return 0
 
-    def hess(
-        _,
-        cb: kn.CB_context,
-        req: kn.KN_eval_request,
-        res: kn.KN_eval_result,
-        params: P3dCCP,
-    ):
+    def hess(_, cb: kn.CB_context, req: kn.KN_eval_request, res: kn.KN_eval_result, ctx: P3dCCtx):
         if req.type != kn.KN_RC_EVALH and req.type != kn.KN_RC_EVALH_NO_F:
             return -1
-        v = req.x
-        u = req.lambda_
-        for k in range(params.n):
-            j = params.x[k]
-            i = params.c[k]
-            x, y = v[j : j + 2]
-            a = params.a[k]
-            b = a * (1 - a)
-            res.hess[3 * k] = -b * np.power(x, a - 2) * np.power(y, 1 - a) * u[i]
-            res.hess[3 * k + 1] = b * np.power(x, a - 1) * np.power(y, -a) * u[i]
-            res.hess[3 * k + 2] = -b * np.power(x, a) * np.power(y, -a - 1) * u[i]
+        n = ctx.n
+        vp = ctx.vp
+        cp = ctx.cp
+        a = ctx.a
+        b = a * (1 - a)
+        v = np.asarray(req.x[vp : vp + 3 * n])
+        u = np.asarray(req.lambda_[cp : cp + n])
+        x = v[0::3]
+        y = v[1::3]
+        res.hess[0::3] = -b * np.power(x, a - 2) * np.power(y, 1 - a) * u
+        res.hess[1::3] = b * np.power(x, a - 1) * np.power(y, -a) * u
+        res.hess[2::3] = -b * np.power(x, a) * np.power(y, -a - 1) * u
         return 0
 
     return CB(f=f, grad=grad, hess=hess)
@@ -449,7 +422,7 @@ class KNITRO(ConicSolver):
 
         if not verbose:
             # Disable Knitro output.
-            kn.KN_set_int_param(kc, kn.KN_PARAM_OUTLEV, kn.KN_OUTLEV_NONE)
+            kn.KN_set_int_param(kc, kn.KN_PARAM_OUTLEV, kn.KN_OUTLEV_ALL)
 
         n_vars = int(c.shape[0])
         results[KNITRO.N_VARS_KEY] = n_vars
@@ -521,11 +494,10 @@ class KNITRO(ConicSolver):
             coefs=coefs,
         )
 
-        var_offset = n_vars
-        con_offset = n_cons
+        vp, cp = n_vars, n_cons
         if dims.n_socs > 0:
-            con_idxs = con_offset + np.arange(dims.n_socs)
-            var_idxs = var_offset + np.insert(np.cumsum(dims.socs), 0, 0)[:-1]
+            con_idxs = cp + np.arange(dims.n_socs)
+            var_idxs = vp + np.insert(np.cumsum(dims.socs), 0, 0)[:-1]
             bnds = np.zeros_like(con_idxs, dtype=float)
             coefs = -np.ones_like(var_idxs, dtype=float)
             kn.KN_set_con_upbnds(kc, indexCons=con_idxs, cUpBnds=bnds)
@@ -538,22 +510,22 @@ class KNITRO(ConicSolver):
                 coefs=coefs,
             )
             for k in range(dims.n_socs):
-                con_idx = con_offset + k
-                var_idxs = var_offset + np.arange(dims.socs[k])
-                coefs = np.ones_like(var_idxs[1:], dtype=float)
+                con_idx = cp + k
+                var_idxs = vp + np.arange(1, dims.socs[k])
+                coefs = np.ones_like(var_idxs, dtype=float)
                 kn.KN_add_con_quadratic_struct(
                     kc,
                     indexCons=con_idx,
-                    indexVars1=var_idxs[1:],
-                    indexVars2=var_idxs[1:],
+                    indexVars1=var_idxs,
+                    indexVars2=var_idxs,
                     coefs=coefs,
                 )
-                var_offset += dims.socs[k]
-        con_offset += dims.n_socs
+                vp += dims.socs[k]
+        cp += dims.n_socs
 
         if dims.n_exps > 0:
-            con_idxs = con_offset + np.arange(dims.n_exps)
-            var_idxs = var_offset + np.arange(dims.n_exp_vars)
+            con_idxs = cp + np.arange(dims.n_exps)
+            var_idxs = vp + np.arange(dims.n_exp_vars)
             bnds = np.zeros_like(con_idxs, dtype=float)
             kn.KN_set_con_upbnds(kc, indexCons=con_idxs, cUpBnds=bnds)
             kn.KN_set_var_lobnds(kc, indexVars=var_idxs[1::3], xLoBnds=bnds)
@@ -581,14 +553,14 @@ class KNITRO(ConicSolver):
                 hessIndexVars2=hess_var2_idxs,
                 hessCallback=cb.hess,
             )
-            params = ECCP(n=dims.n_exps, x=var_idxs[0::3], c=con_idxs)
-            kn.KN_set_cb_user_params(kc, kb, params)
-        con_offset += dims.n_exps
-        var_offset += dims.n_exp_vars
+            ctx = ECCtx(n=dims.n_exps, vp=vp, cp=cp)
+            kn.KN_set_cb_user_params(kc, kb, ctx)
+        cp += dims.n_exps
+        vp += dims.n_exp_vars
 
         if dims.n_pow3d > 0:
-            con_idxs = con_offset + np.arange(dims.n_pow3d)
-            var_idxs = var_offset + np.arange(dims.n_pow3d_vars)
+            con_idxs = cp + np.arange(dims.n_pow3d)
+            var_idxs = vp + np.arange(dims.n_pow3d_vars)
             bnds = np.zeros_like(con_idxs, dtype=float)
             kn.KN_set_con_lobnds(kc, indexCons=con_idxs, cLoBnds=bnds)
             kn.KN_set_var_lobnds(kc, indexVars=var_idxs[0::3], xLoBnds=bnds)
@@ -616,10 +588,10 @@ class KNITRO(ConicSolver):
                 hessIndexVars2=hess_var2_idxs,
                 hessCallback=cb.hess,
             )
-            params = P3dCCP(n=dims.n_pow3d, x=var_idxs[0::3], c=con_idxs, a=dims.pow3ds)
-            kn.KN_set_cb_user_params(kc, kb, params)
-        con_offset += dims.n_pow3d
-        var_offset += dims.n_pow3d_vars
+            ctx = P3dCCtx(n=dims.n_pow3d, vp=vp, cp=cp, a=dims.pow3ds)
+            kn.KN_set_cb_user_params(kc, kb, ctx)
+        cp += dims.n_pow3d
+        vp += dims.n_pow3d_vars
 
         if dims.n_psds > 0:
             pass
