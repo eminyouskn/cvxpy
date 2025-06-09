@@ -300,6 +300,9 @@ class KNITRO(ConicSolver):
 
         knitro
 
+    def supports_quad_obj(self):
+        return True
+
     def accepts(self, problem) -> bool:
         return super(KNITRO, self).accepts(problem)
 
