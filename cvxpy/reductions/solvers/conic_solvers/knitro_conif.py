@@ -68,9 +68,10 @@ class Dims:
         self.n_cone_cons = self.n_soc_cons + self.n_exp_cons + self.n_psd_cons + self.n_p3d_cons
         self.n_soc_vars = sum(self.soc_dims)
         self.n_exp_vars = 3 * self.n_exp_cons
-        self.n_psd_vars = sum(d ** 2 for d in self.psd_dims)
+        self.n_psd_vars = sum(d**2 for d in self.psd_dims)
         self.n_p3d_vars = 3 * self.n_p3d_cons
         self.n_cone_vars = self.n_soc_vars + self.n_exp_vars + self.n_psd_vars + self.n_p3d_vars
+
 
 class CB:
     # Knitro callback
@@ -536,9 +537,7 @@ class KNITRO(ConicSolver):
             bnds = np.zeros_like(cis)
             coefs = -np.ones_like(vis)
             kn.KN_set_con_eqbnds(kc, indexCons=cis, cEqBnds=bnds)
-            kn.KN_add_con_linear_struct(
-                kc, indexCons=cis, indexVars=vis, coefs=coefs
-            )
+            kn.KN_add_con_linear_struct(kc, indexCons=cis, indexVars=vis, coefs=coefs)
             vp += dims.n_psd_vars
 
         vp += dims.n_p3d_vars
@@ -548,11 +547,11 @@ class KNITRO(ConicSolver):
             cis = cp + np.arange(d**2)
             for i in range(d):
                 for j in range(d):
-                    vis1 = vis[d*i:d*(i+1)]
-                    vis2 = vis[d*j:d*(j+1)]
+                    vis1 = vis[d * i : d * (i + 1)]
+                    vis2 = vis[d * j : d * (j + 1)]
                     coefs = np.ones_like(vis1)
                     kn.KN_add_con_quadratic_struct(
-                        kc, indexCons=cis[d*i+j], indexVars1=vis1, indexVars2=vis2, coefs=coefs
+                        kc, indexCons=cis[d * i + j], indexVars1=vis1, indexVars2=vis2, coefs=coefs
                     )
             cp += d**2
             vp += d**2
