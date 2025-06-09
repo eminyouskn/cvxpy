@@ -18,7 +18,7 @@ import numpy as np
 import scipy.sparse as sp
 
 import cvxpy.settings as s
-from cvxpy.constraints import SOC, ExpCone, PowCone3D
+from cvxpy.constraints import PSD, SOC, ExpCone, PowCone3D
 from cvxpy.reductions.dcp2cone.cone_matrix_stuffing import ParamConeProg
 from cvxpy.reductions.solution import Solution, failure_solution
 from cvxpy.reductions.solvers import utilities
@@ -52,22 +52,25 @@ def kn_rm_inf(a) -> tuple[list[int], list[float]]:
 
 class Dims:
     def __init__(self, dims: dict):
-        self.n_eqs = int(dims.get(s.EQ_DIM, 0))
-        self.n_ineqs = int(dims.get(s.LEQ_DIM, 0))
-        self.socs = [int(d) for d in dims.get(s.SOC_DIM, [])]
+        self.n_eq_cons = int(dims.get(s.EQ_DIM, 0))
+        self.n_ineq_cons = int(dims.get(s.LEQ_DIM, 0))
+        self.soc_dims = [int(d) for d in dims.get(s.SOC_DIM, [])]
         self.n_exps = int(dims.get(s.EXP_DIM, 0))
-        self.pow3ds = dims.get("p", [])
-        self.psds = dims.get(s.PSD_DIM, [])
-        self.n_pow3d = len(self.pow3ds)
-        self.n_socs = len(self.socs)
-        self.n_psds = len(self.psds)
-        self.n_cones = self.n_socs + self.n_exps + self.n_pow3d + self.n_psds
-        self.n_soc_vars = sum(self.socs)
-        self.n_exp_vars = 3 * self.n_exps
-        self.n_pow3d_vars = 3 * self.n_pow3d
-        self.n_psd_vars = sum(d * (d + 1) // 2 for d in self.psds)
-        self.n_cone_vars = self.n_soc_vars + self.n_exp_vars + self.n_pow3d_vars + self.n_psd_vars
-
+        self.p3d_exps = dims.get("p", [])
+        self.psd_dims = dims.get(s.PSD_DIM, [])
+        self.n_p3ds = len(self.p3d_exps)
+        self.n_socs = len(self.soc_dims)
+        self.n_psds = len(self.psd_dims)
+        self.n_exp_cons = self.n_exps
+        self.n_p3d_cons = self.n_p3ds
+        self.n_soc_cons = self.n_socs
+        self.n_psd_cons = sum(d**2 for d in self.psd_dims)
+        self.n_cone_cons = self.n_soc_cons + self.n_exp_cons + self.n_psd_cons + self.n_p3d_cons
+        self.n_soc_vars = sum(self.soc_dims)
+        self.n_exp_vars = 3 * self.n_exp_cons
+        self.n_psd_vars = sum(d ** 2 for d in self.psd_dims)
+        self.n_p3d_vars = 3 * self.n_p3d_cons
+        self.n_cone_vars = self.n_soc_vars + self.n_exp_vars + self.n_psd_vars + self.n_p3d_vars
 
 class CB:
     # Knitro callback
@@ -206,7 +209,7 @@ class KNITRO(ConicSolver):
     # Solver capabilities.
     MIP_CAPABLE = True
     BOUNDED_VARIABLES = True
-    SUPPORTED_CONSTRAINTS = ConicSolver.SUPPORTED_CONSTRAINTS + [SOC, ExpCone, PowCone3D]
+    SUPPORTED_CONSTRAINTS = ConicSolver.SUPPORTED_CONSTRAINTS + [SOC, ExpCone, PowCone3D, PSD]
     MI_SUPPORTED_CONSTRAINTS = SUPPORTED_CONSTRAINTS
 
     # Keys:
@@ -399,7 +402,7 @@ class KNITRO(ConicSolver):
         A = data.get(s.A)
         lb = data.get(s.LOWER_BOUNDS)
         ub = data.get(s.UPPER_BOUNDS)
-        dims = Dims(dims_to_solver_dict(data.get(s.DIMS) or {}))
+        dims = Dims(dims_to_solver_dict(data.get(s.DIMS)))
 
         results = {}
         try:
@@ -454,8 +457,10 @@ class KNITRO(ConicSolver):
 
         if dims.n_cone_vars > 0:
             kn.KN_add_vars(kc, dims.n_cone_vars)
-        if dims.n_cones > 0:
-            kn.KN_add_cons(kc, dims.n_cones)
+        if dims.n_cone_cons > 0:
+            kn.KN_add_cons(kc, dims.n_cone_cons)
+        if dims.n_psds > 0:
+            kn.KN_add_vars(kc, dims.n_psd_vars)
 
         D = sp.coo_matrix(A)
         if D.nnz != 0:
@@ -463,53 +468,51 @@ class KNITRO(ConicSolver):
             kn.KN_add_con_linear_struct(kc, indexCons=cis, indexVars=vis, coefs=coefs)
 
         cp = 0
-        if dims.n_eqs > 0:
-            cis = cp + np.arange(dims.n_eqs)
+        vp = n_vars
+        if dims.n_eq_cons > 0:
+            cis = cp + np.arange(dims.n_eq_cons)
             kn.KN_set_con_eqbnds(kc, indexCons=cis, cEqBnds=b[cis])
-        cp += dims.n_eqs
+        cp += dims.n_eq_cons
 
-        if dims.n_ineqs > 0:
-            cis = cp + np.arange(dims.n_ineqs)
+        if dims.n_ineq_cons > 0:
+            cis = cp + np.arange(dims.n_ineq_cons)
             kn.KN_set_con_upbnds(kc, indexCons=cis, cUpBnds=b[cis])
-        cp += dims.n_ineqs
+        cp += dims.n_ineq_cons
 
         if dims.n_cone_vars > 0:
-            vis = n_vars + np.arange(dims.n_cone_vars)
+            vis = vp + np.arange(dims.n_cone_vars)
             cis = cp + np.arange(dims.n_cone_vars)
             coefs = np.ones_like(vis)
             kn.KN_set_con_eqbnds(kc, indexCons=cis, cEqBnds=b[cis])
             kn.KN_add_con_linear_struct(kc, indexCons=cis, indexVars=vis, coefs=coefs)
         cp += dims.n_cone_vars
 
-        # Set the upper bounds on the cone constraints.
-        if dims.n_cones > 0:
-            cis = cp + np.arange(dims.n_cones)
-            bnds = np.zeros_like(cis)
-            kn.KN_set_con_upbnds(kc, indexCons=cis, cUpBnds=bnds)
-
-        vp = n_vars
         if dims.n_socs > 0:
-            cis = cp + np.arange(dims.n_socs)
-            vis = vp + np.insert(np.cumsum(dims.socs), 0, 0)[:-1]
+            cis = cp + np.arange(dims.n_soc_cons)
+            vis = vp + np.insert(np.cumsum(dims.soc_dims), 0, 0)[:-1]
             bnds = np.zeros_like(cis)
             coefs = -np.ones_like(vis)
+            kn.KN_set_con_upbnds(kc, indexCons=cis, cUpBnds=bnds)
             kn.KN_set_var_lobnds(kc, indexVars=vis, xLoBnds=bnds)
             kn.KN_add_con_quadratic_struct(
                 kc, indexCons=cis, indexVars1=vis, indexVars2=vis, coefs=coefs
             )
-            for k in range(dims.n_socs):
-                vis = vp + np.arange(1, dims.socs[k])
-                coefs = np.ones_like(vis)
-                kn.KN_add_con_quadratic_struct(
-                    kc, indexCons=cp, indexVars1=vis, indexVars2=vis, coefs=coefs
-                )
-                vp += dims.socs[k]
-                cp += 1
+
+        for k in range(dims.n_soc_cons):
+            d = dims.soc_dims[k]
+            vis = vp + np.arange(1, d)
+            coefs = np.ones_like(vis)
+            kn.KN_add_con_quadratic_struct(
+                kc, indexCons=cp + k, indexVars1=vis, indexVars2=vis, coefs=coefs
+            )
+            vp += d
+        cp += dims.n_soc_cons
 
         if dims.n_exps > 0:
-            cis = cp + np.arange(dims.n_exps)
+            cis = cp + np.arange(dims.n_exp_cons)
             vis = vp + np.arange(dims.n_exp_vars)
             bnds = np.zeros_like(cis)
+            kn.KN_set_con_upbnds(kc, indexCons=cis, cUpBnds=bnds)
             kn.KN_set_var_lobnds(kc, indexVars=vis[1::3], xLoBnds=bnds)
             kn.KN_set_var_lobnds(kc, indexVars=vis[2::3], xLoBnds=bnds)
 
@@ -527,13 +530,42 @@ class KNITRO(ConicSolver):
             )
             ctx = Ctx(n=dims.n_exps, vp=vp, cp=cp)
             kn.KN_set_cb_user_params(kc, kb, ctx)
-        cp += dims.n_exps
+        cp += dims.n_exp_cons
         vp += dims.n_exp_vars
 
-        if dims.n_pow3d > 0:
-            cis = cp + np.arange(dims.n_pow3d)
-            vis = vp + np.arange(dims.n_pow3d_vars)
+        if dims.n_psds > 0:
+            cis = cp + np.arange(dims.n_psd_cons)
+            vis = vp + np.arange(dims.n_psd_vars)
             bnds = np.zeros_like(cis)
+            coefs = -np.ones_like(vis)
+            kn.KN_set_con_eqbnds(kc, indexCons=cis, cEqBnds=bnds)
+            kn.KN_add_con_linear_struct(
+                kc, indexCons=cis, indexVars=vis, coefs=coefs
+            )
+            vp += dims.n_psd_vars
+
+        vp += dims.n_p3d_vars
+        for k in range(dims.n_psds):
+            d = dims.psd_dims[k]
+            vis = vp + np.arange(d**2)
+            cis = cp + np.arange(d**2)
+            for i in range(d):
+                for j in range(d):
+                    vis1 = vis[d*i:d*(i+1)]
+                    vis2 = vis[d*j:d*(j+1)]
+                    coefs = np.ones_like(vis1)
+                    kn.KN_add_con_quadratic_struct(
+                        kc, indexCons=cis[d*i+j], indexVars1=vis1, indexVars2=vis2, coefs=coefs
+                    )
+            cp += d**2
+            vp += d**2
+        vp -= dims.n_p3d_vars
+
+        if dims.n_p3ds > 0:
+            cis = cp + np.arange(dims.n_p3d_cons)
+            vis = vp + np.arange(dims.n_p3d_vars)
+            bnds = np.zeros_like(cis)
+            kn.KN_set_con_upbnds(kc, indexCons=cis, cUpBnds=bnds)
             kn.KN_set_var_lobnds(kc, indexVars=vis[0::3], xLoBnds=bnds)
             kn.KN_set_var_lobnds(kc, indexVars=vis[1::3], xLoBnds=bnds)
 
@@ -544,18 +576,15 @@ class KNITRO(ConicSolver):
             jvis = vis
             kn.KN_set_cb_grad(kc, kb, jacIndexCons=jcis, jacIndexVars=jvis, gradCallback=cb.grad)
             hvis = np.repeat(vis[0::3], 3)
-            hvis1 = hvis + np.tile(np.array([0, 0, 1]), dims.n_pow3d)
-            hvis2 = hvis + np.tile(np.array([0, 1, 1]), dims.n_pow3d)
+            hvis1 = hvis + np.tile(np.array([0, 0, 1]), dims.n_p3ds)
+            hvis2 = hvis + np.tile(np.array([0, 1, 1]), dims.n_p3ds)
             kn.KN_set_cb_hess(
                 kc, kb, hessIndexVars1=hvis1, hessIndexVars2=hvis2, hessCallback=cb.hess
             )
-            ctx = Ctx(n=dims.n_pow3d, vp=vp, cp=cp, a=dims.pow3ds)
+            ctx = Ctx(n=dims.n_p3ds, vp=vp, cp=cp, a=dims.p3d_exps)
             kn.KN_set_cb_user_params(kc, kb, ctx)
-        cp += dims.n_pow3d
-        vp += dims.n_pow3d_vars
-
-        if dims.n_psds > 0:
-            pass
+        cp += dims.n_p3d_cons
+        vp += dims.n_p3d_vars
 
         # Set the initial values of the dual variables.
         if KNITRO.Y_INIT_KEY in solver_opts:

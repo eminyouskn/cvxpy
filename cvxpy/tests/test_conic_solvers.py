@@ -2580,9 +2580,6 @@ class TestKNITRO(BaseTest):
     def test_knitro_expcone_1(self) -> None:
         StandardTestECPs.test_expcone_1(solver=cp.KNITRO)
 
-    def test_knitro_exp_soc_1(self) -> None:
-        StandardTestMixedCPs.test_exp_soc_1(solver=cp.KNITRO)
-
     def test_knitro_pcp_1(self) -> None:
         StandardTestPCPs.test_pcp_1(solver=cp.KNITRO)
 
@@ -2594,6 +2591,21 @@ class TestKNITRO(BaseTest):
 
     def test_knitro_mi_pcp_0(self) -> None:
         StandardTestPCPs.test_mi_pcp_0(solver=cp.KNITRO)
+
+    def test_knitro_sdp_1min(self) -> None:
+        StandardTestSDPs.test_sdp_1min(solver=cp.KNITRO)
+
+    def test_knitro_sdp_1max(self) -> None:
+        StandardTestSDPs.test_sdp_1max(solver=cp.KNITRO)
+
+    def test_knitro_sdp_2(self) -> None:
+        StandardTestSDPs.test_sdp_2(solver=cp.KNITRO)
+
+    def test_knitro_exp_soc_1(self) -> None:
+        StandardTestMixedCPs.test_exp_soc_1(solver=cp.KNITRO)
+
+    def test_knitro_sdp_pcp_1(self) -> None:
+        StandardTestMixedCPs.test_sdp_pcp_1(solver=cp.KNITRO)
 
     def test_knitro_params(self) -> None:
         n = 10
