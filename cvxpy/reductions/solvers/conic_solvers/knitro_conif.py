@@ -432,9 +432,6 @@ class KNITRO(ConicSolver):
             kn.KN_set_var_upbnds(kc, indexVars=i, xUpBnds=ub)
 
         # Set the variable types.
-        # - default: KN_VARTYPE_CONTINUOUS.
-        # - binray: KN_VARTYPE_BINARY.
-        # - integer: KN_VARTYPE_INTEGER.
         vts = [kn.KN_VARTYPE_CONTINUOUS] * n_vars
         if s.BOOL_IDX in data:
             for j in data[s.BOOL_IDX]:
@@ -467,8 +464,7 @@ class KNITRO(ConicSolver):
             cis, vis, coefs = D.row, D.col, D.data
             kn.KN_add_con_linear_struct(kc, indexCons=cis, indexVars=vis, coefs=coefs)
 
-        cp = 0
-        vp = n_vars
+        vp, cp = 0, 0
         if dims.n_eq_cons > 0:
             cis = cp + np.arange(dims.n_eq_cons)
             kn.KN_set_con_eqbnds(kc, indexCons=cis, cEqBnds=b[cis])
@@ -478,6 +474,7 @@ class KNITRO(ConicSolver):
             cis = cp + np.arange(dims.n_ineq_cons)
             kn.KN_set_con_upbnds(kc, indexCons=cis, cUpBnds=b[cis])
         cp += dims.n_ineq_cons
+        vp += n_vars
 
         if dims.n_cone_vars > 0:
             vis = vp + np.arange(dims.n_cone_vars)
