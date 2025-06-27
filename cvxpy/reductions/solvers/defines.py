@@ -89,7 +89,6 @@ CONIC_SOLVERS = [s.MOSEK, s.CLARABEL, s.SCS, s.ECOS, s.SDPA,
                  s.GLPK_MI, s.CBC, s.CVXOPT, s.XPRESS, s.DIFFCP,
                  s.SCIP, s.SCIPY, s.HIGHS, s.GLOP, s.PDLP, s.QOCO, 
                  s.CUCLARABEL, s.ECOS_BB, s.KNITRO]
-                 s.CUCLARABEL, s.ECOS_BB]
 QP_SOLVERS = [s.OSQP,
               s.GUROBI,
               s.CPLEX,
