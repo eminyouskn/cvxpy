@@ -106,9 +106,8 @@ QP_SOLVERS = [s.OSQP,
               s.KNITRO]
 DISREGARD_CLARABEL_SDP_SUPPORT_FOR_DEFAULT_RESOLUTION = True
 MI_SOLVERS = [s.GLPK_MI, s.MOSEK, s.GUROBI, s.CPLEX,
-              s.XPRESS, s.CBC, s.SCIP, s.HIGHS, s.COPT, s.ECOS_BB, s.KNITRO]
-              s.XPRESS, s.CBC, s.SCIP, s.HIGHS, s.COPT, s.CUOPT, s.ECOS_BB,
-              s.KNITRO]
+              s.XPRESS, s.CBC, s.SCIP, s.HIGHS, s.COPT,
+              s.CUOPT, s.ECOS_BB, s.KNITRO]
 MI_SOCP_SOLVERS = [s.MOSEK, s.GUROBI, s.CPLEX, s.XPRESS,
                    s.SCIP, s.ECOS_BB, s.KNITRO]
 
