@@ -529,3 +529,15 @@ CITATION_DICT["KNITRO"] = \
   publisher={Springer}
 }
 """
+
+CITATION_DICT["CUOPT"] = \
+"""
+@software{cuOpt,
+  title = {cuOpt},
+  version = { 25.05 },
+  organization = {NVIDIA},
+  url = {https://docs.nvidia.com/cuopt/index.html},
+  date = { 2025-05-29 }
+}
+"""
+
