@@ -47,6 +47,7 @@ if [[ -n "$MOSEK_CI_BASE64" ]]; then
 fi
 
 # Only install KNITRO if license is available (secret is not copied to forks)
-if [[ -n "$KNITRO_CI" ]]; then
+# KNITRO on macOS is only available for arch64
+if [[ -n "$KNITRO_CI" ]] && ! ([[ "$RUNNER_OS" == "macOS" ]] && [[ $(uname -m) != "aarch64" ]]); then
   python -m pip install knitro
 fi
