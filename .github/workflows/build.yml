@@ -57,7 +57,7 @@ jobs:
           echo $MOSEK_CI_BASE64 | base64 -d > mosek.lic
           echo "MOSEKLM_LICENSE_FILE=$( [[ $RUNNER_OS == 'macOS' ]] && echo $(pwd)/mosek.lic || echo $(realpath mosek.lic) )" >> $GITHUB_ENV
           echo $KNITRO_CI > artelys_knitro.txt
-          echo "KNITRO_LICENSE_FILE=$( [[ $RUNNER_OS == 'macOS' ]] && echo $(pwd)/artelys_knitro.txt || echo $(realpath artelys_knitro.txt) )" >> $GITHUB_ENV
+          echo "ARTELYS_LICENSE=$( [[ $RUNNER_OS == 'macOS' ]] && echo $(pwd)/artelys_knitro.txt || echo $(realpath artelys_knitro.txt) )" >> $GITHUB_ENV
       - uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
