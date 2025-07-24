@@ -3,10 +3,10 @@ name: test_optional_solvers
 on:
     pull_request:
     push:
-        branches:
-            - master
-        tags:
-          - '*'
+      branches:
+          - master
+      tags:
+        - '*'
 jobs:
   test_optional_solvers:
     runs-on: ${{ matrix.os }}
@@ -24,8 +24,7 @@ jobs:
           echo "PYTHON_SUBVERSION=$(echo $PYTHON_VERSION | cut -c 3-)" >> $GITHUB_ENV
           echo $MOSEK_CI_BASE64 | base64 -d > mosek.lic
           echo "MOSEKLM_LICENSE_FILE=$( [[ $RUNNER_OS == 'macOS' ]] && echo $(pwd)/mosek.lic || echo $(realpath mosek.lic) )" >> $GITHUB_ENV
-          echo $KNITRO_CI > artelys_knitro.txt
-          echo "ARTELYS_LICENSE=$(echo $(pwd)/artelys_knitro.txt)" >> $GITHUB_ENV
+          echo $KNITRO_CI > artelys_lic.txt
 
       - uses: actions/setup-python@v5
         with:
