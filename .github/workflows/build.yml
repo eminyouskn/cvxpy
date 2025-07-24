@@ -47,6 +47,7 @@ jobs:
       SINGLE_ACTION_CONFIG: "${{ matrix.single_action_config && 'True' || 'False' }}"
       USE_OPENMP: "${{ matrix.openmp == 'True' && 'True' || 'False' }}"
       MOSEK_CI_BASE64: ${{ secrets.MOSEK_CI_BASE64 }}
+      KNITRO_CI: ${{ secrets.KNITRO_CI }}
 
     steps:
       - uses: actions/checkout@v4
