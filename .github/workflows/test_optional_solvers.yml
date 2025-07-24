@@ -49,3 +49,4 @@ jobs:
     env:
       RUNNER_OS: ${{ matrix.os }}
       PYTHON_VERSION: 3.12
+      KNITRO_CI: ${{ secrets.KNITRO_CI }}
