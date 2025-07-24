@@ -846,7 +846,8 @@ Here is the complete list of solver options.
 
 .. info:: `KNITRO`_ options:
     :collapsible:
-        KNITRO solver options are specified in CVXPY as keyword arguments. The full list of KNITRO parameters with defaults is listed `here <https://www.artelys.com/app/docs/knitro/3_referenceManual/userOptions.html>`_.
+    
+    KNITRO solver options are specified in CVXPY as keyword arguments. The full list of KNITRO parameters with defaults is listed `here <https://www.artelys.com/app/docs/knitro/3_referenceManual/userOptions.html>`_.
 
 Custom Solvers
 ------------------------------------
